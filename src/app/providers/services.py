@@ -8,16 +8,8 @@ from redis import ConnectionPool
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
 from app.models import MediaTypes, Sources
-from app.providers import (
-    comicvine,
-    hardcover,
-    igdb,
-    mal,
-    mangaupdates,
-    manual,
-    openlibrary,
-    tmdb,
-)
+from app.providers import (comicvine, googlebooks, hardcover, igdb, mal,
+                           mangaupdates, manual, openlibrary, tmdb)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +52,10 @@ session.mount(
 )
 session.mount(
     "https://openlibrary.org",
+    LimiterAdapter(per_minute=20),
+)
+session.mount(
+    "https://www.googleapis.com/books/v1/volumes",
     LimiterAdapter(per_minute=20),
 )
 session.mount(
@@ -190,6 +186,8 @@ def search(media_type, query, page, source=None):
     elif media_type == MediaTypes.BOOK.value:
         if source == Sources.OPENLIBRARY.value:
             response = openlibrary.search(query, page)
+        elif source == Sources.GOOGLEBOOKS.value:
+            response = googlebooks.search(query, page)
         else:
             response = hardcover.search(query, page)
     elif media_type == MediaTypes.COMIC.value:

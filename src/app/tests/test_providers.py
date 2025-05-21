@@ -8,17 +8,8 @@ from django.conf import settings
 from django.test import TestCase
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import (
-    comicvine,
-    hardcover,
-    igdb,
-    mal,
-    mangaupdates,
-    manual,
-    openlibrary,
-    services,
-    tmdb,
-)
+from app.providers import (comicvine, googlebooks, hardcover, igdb, mal,
+                           mangaupdates, manual, openlibrary, services, tmdb)
 
 mock_path = Path(__file__).resolve().parent / "mock_data"
 
@@ -89,6 +80,17 @@ class Search(TestCase):
         Assert that all required keys are present in each entry.
         """
         response = openlibrary.search("The Name of the Wind", 1)
+        required_keys = {"media_id", "media_type", "title", "image"}
+
+        for book in response["results"]:
+            self.assertTrue(all(key in book for key in required_keys))
+
+    def test_books_google(self):
+        """Test the search method for books.
+
+        Assert that all required keys are present in each entry.
+        """
+        response = googlebooks.search("The Name of the Wind", 1)
         required_keys = {"media_id", "media_type", "title", "image"}
 
         for book in response["results"]:
