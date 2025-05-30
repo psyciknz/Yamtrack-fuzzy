@@ -76,9 +76,9 @@ def search(query, page):
     return data
 
 
-def extract_openlibrary_id(path):
+def extract_googlebooks_id(path):
     """
-    Extract the ID from an OpenLibrary path.
+    Extract the ID from an Google Books media.
 
     Args:
         path (str): A path like '/works/OL123W' or a full URL
@@ -110,7 +110,7 @@ async def async_book(media_id):
     data = cache.get(cache_key)
 
     if data is None:
-        book_url = f"https://openlibrary.org/books/{media_id}.json"
+        book_url = f"https://books.google.com/ebooks?id={media_id}&dq=holmes&as_brr=4&source=webstore_bookcard"
 
         try:
             response_book = services.api_request(
