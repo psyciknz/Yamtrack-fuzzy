@@ -393,6 +393,7 @@ class Metadata(TestCase):
         """Test the metadata method for books from Hardcover."""
         response = googlebooks.book("IwywDY4P6gsC")
         self.assertEqual(response["title"], "Foundation")
+        # failed here
         self.assertEqual(response["details"]["author"], "Issac Asimov")
         self.assertEqual(response["details"]["publisher"], "Spectra")
         self.assertEqual(response["details"]["publish_date"], "2004-06-01")
