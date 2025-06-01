@@ -64,7 +64,7 @@ def search(query, page):
             if (media_id := get_media_id(doc)) and "volumeInfo" in doc and "title" in doc["volumeInfo"]
         ]
 
-        total_results = response["numFound"]
+        total_results = response["totalItems"]
         data = helpers.format_search_response(
             page,
             settings.PER_PAGE,
@@ -110,7 +110,7 @@ async def async_book(media_id):
     data = cache.get(cache_key)
 
     if data is None:
-        book_url = f"https://books.google.com/ebooks?id={media_id}&dq=holmes&as_brr=4&source=webstore_bookcard"
+        book_url = f"{base_url}/{media_id}"
 
         try:
             response_book = services.api_request(
@@ -121,57 +121,27 @@ async def async_book(media_id):
         except requests.RequestException as e:
             handle_error(e)
 
-        works = response_book.get("works", [])
-        if works:
-            work = works[0]
-            work_id = extract_openlibrary_id(work["key"])
-            work_url = f"https://openlibrary.org/works/{work_id}.json"
-
-            try:
-                response_work = services.api_request(
-                    Sources.GOOGLEBOOKS.value,
-                    "GET",
-                    work_url,
-                )
-            except requests.RequestException as e:
-                handle_error(e)
-        else:
-            response_work = {}
-
-        # Run authors, editions, and ratings concurrently
-        authors_task = asyncio.create_task(
-            get_authors(response_work),
-        )
-        editions_task = asyncio.create_task(
-            get_editions(response_book, response_work),
-        )
-        ratings_task = asyncio.create_task(
-            get_ratings(response_work),
-        )
-        score, score_count = await ratings_task
+        responseBook = response_book.get("volumeInfo", [])
 
         data = {
             "media_id": media_id,
             "source": Sources.GOOGLEBOOKS.value,
-            "source_url": f"https://openlibrary.org/books/{media_id}",
+            "source_url": response_book.get("selfLink"),
             "media_type": MediaTypes.BOOK.value,
-            "title": response_book["title"],
-            "max_progress": response_book.get("number_of_pages"),
-            "image": get_cover_image_url(response_book),
-            "synopsis": get_description(response_book, response_work),
-            "genres": get_subjects(response_work),
-            "score": score,
-            "score_count": score_count,
+            "title": responseBook["title"],
+            "max_progress": responseBook.get("pageCount"),
+            "image": get_cover_image_url(responseBook),
+            "synopsis": get_description(responseBook, response_book),
+            "genres": get_subjects(responseBook),
+            "score": 0,
+            "score_count": 0,
             "details": {
-                "physical_format": get_physical_format(response_book),
-                "number_of_pages": response_book.get("number_of_pages"),
-                "publish_date": get_publish_date(response_book),
-                "author": await authors_task,
-                "publishers": get_publishers(response_book),
-                "isbn": get_isbns(response_book),
-            },
-            "related": {
-                "other_editions": await editions_task,
+                "physical_format": responseBook.get("printType"),
+                "number_of_pages": responseBook.get("pageCount"),
+                "publish_date": get_publish_date(responseBook),
+                "author": responseBook.get("authors"),
+                "publishers": get_publishers(responseBook),
+                "isbn": get_isbns(responseBook),
             },
         }
 
@@ -199,7 +169,7 @@ def get_cover_image_url(response):
     """Get the cover image URL from a work response."""
     covers = response.get("imageLinks", [])
     if covers:
-        return covers["medium"]
+        return covers["thumbnail"]
     return settings.IMG_NONE
 
 
@@ -227,7 +197,7 @@ def get_description(response_book, response_work):
 
 def get_physical_format(response):
     """Get the physical format of the book."""
-    format_value = response.get("physical_format")
+    format_value = response.get("dimessions")
     if format_value:
         return format_value.title()
     return None
@@ -255,55 +225,32 @@ def get_publish_date(response):
     return None
 
 
-async def get_authors(response):
-    """Get list of author names asynchronously."""
-    authors = []
-    author_entries = response.get("authors", [])
-
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for author in author_entries:
-            if isinstance(author, dict) and "author" in author:
-                author_key = author["author"]["key"]
-                author_url = f"https://openlibrary.org{author_key}.json"
-                tasks.append(fetch_author_data(session, author_url))
-
-        author_data_list = await asyncio.gather(*tasks)
-        authors = [
-            data.get("name", "Unknown Author") for data in author_data_list if data
-        ]
-
-    return authors if authors else None
-
-
-async def fetch_author_data(session, url):
-    """Fetch author data asynchronously."""
-    async with session.get(url) as response:
-        if response.status == requests.codes.ok:
-            return await response.json()
-
-    return None
-
-
 def get_subjects(response):
     """Get list of subjects/genres."""
-    if "subjects" in response:
-        return response["subjects"][:5]
+    if "categories" in response:
+        return response["categories"][:5]
     return None
 
 
 def get_publishers(response):
     """Get list of publishers."""
-    if "publishers" in response:
-        return response.get("publishers", [])[:5]
+    if "publisherr" in response:
+        return response.get("publisher", [])[:5]
     return None
 
 
 def get_isbns(response):
     """Get list of ISBNs."""
-    isbn_13 = response.get("isbn_13", [])
-    isbn_10 = response.get("isbn_10", [])
-    isbns = isbn_13 + isbn_10
+    if "industryIdentifiers" in response:
+        industry = response.get("industryIdentifiers")
+        for isbn in industry:
+            if isbn["type"] == "ISBN_13":
+                isbn_13 = isbn["identifier"]
+            if isbn["type"] == "ISBN_10":
+                isbn_10 = isbn["identifier"]
+        
+        isbns = isbn_13 + isbn_10
+        
     if isbns:
         return isbns
     return None
