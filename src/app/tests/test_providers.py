@@ -394,10 +394,10 @@ class Metadata(TestCase):
         response = googlebooks.book("IwywDY4P6gsC")
         self.assertEqual(response["title"], "Foundation")
         # failed here
-        self.assertEqual(response["details"]["author"], "Issac Asimov")
-        self.assertEqual(response["details"]["publisher"], "Spectra")
+        self.assertIn("Isaac Asimov",response["details"]["author"])
+        self.assertEqual(response["details"]["publisher"], "Random House Worlds")
         self.assertEqual(response["details"]["publish_date"], "2004-06-01")
-        self.assertEqual(response["details"]["number_of_pages"], 255)
+        self.assertEqual(response["details"]["number_of_pages"], 320)
         self.assertEqual(response["details"]["format"], "printType	")
         # Testing that we have some of the expected genres
         self.assertIn("Fiction", response["genres"])

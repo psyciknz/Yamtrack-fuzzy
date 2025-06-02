@@ -136,11 +136,11 @@ async def async_book(media_id):
             "score": 0,
             "score_count": 0,
             "details": {
-                "physical_format": responseBook.get("printType"),
+                "format": responseBook.get("printType"),
                 "number_of_pages": responseBook.get("pageCount"),
                 "publish_date": get_publish_date(responseBook),
                 "author": responseBook.get("authors"),
-                "publishers": get_publishers(responseBook),
+                "publisher": get_publishers(responseBook),
                 "isbn": get_isbns(responseBook),
             },
         }
@@ -205,8 +205,8 @@ def get_physical_format(response):
 
 def get_publish_date(response):
     """Get the first publication date."""
-    if "publish_date" in response:
-        publish_date = response["publish_date"].removeprefix("cop. ")
+    if "publishedDate" in response:
+        publish_date = response["publishedDate"].removeprefix("cop. ")
 
         date_formats = [
             "%B %d, %Y",  # January 19, 2001
@@ -234,8 +234,8 @@ def get_subjects(response):
 
 def get_publishers(response):
     """Get list of publishers."""
-    if "publisherr" in response:
-        return response.get("publisher", [])[:5]
+    if "publisher" in response:
+        return response.get("publisher", [])
     return None
 
 
