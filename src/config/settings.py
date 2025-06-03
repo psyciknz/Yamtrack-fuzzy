@@ -7,15 +7,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from celery.schedules import crontab
-from decouple import (
-    Config,
-    Csv,
-    RepositorySecret,
-    Undefined,
-    UndefinedValueError,
-    config,
-    undefined,
-)
+from decouple import (Config, Csv, RepositorySecret, Undefined,
+                      UndefinedValueError, config, undefined)
 from django.core.cache import CacheKeyWarning
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -238,7 +231,7 @@ LOGGING = {
     "formatters": {
         "verbose": {
             # format consistent with gunicorn's
-            "format": "[{asctime}] [{process}] [{levelname}] {message}",
+            "format": "[{asctime}] [{process}] [{module}] [{levelname}] {message}",
             "datefmt": "%Y-%m-%d %H:%M:%S %z",
             "style": "{",
         },
