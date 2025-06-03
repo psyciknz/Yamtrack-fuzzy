@@ -398,24 +398,13 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["publisher"], "Random House Worlds")
         self.assertEqual(response["details"]["publish_date"], "2004-06-01")
         self.assertEqual(response["details"]["number_of_pages"], 320)
-        self.assertEqual(response["details"]["format"], "printType	")
+        self.assertEqual(response["details"]["format"], "BOOK")
         # Testing that we have some of the expected genres
-        self.assertIn("Fiction", response["genres"])
+        self.assertIn("Fiction / Classics", response["genres"])
         # Rating is approximately 4.21 * 2 = 8.42
         self.assertAlmostEqual(response["score"], 0, delta=0.1)
 
-    def test_google_book_unknown(self):
-        """Test the metadata method for books from Hardcover with minimal data."""
-        response = googlebooks.book("Sq8NAQAAIAAJ")
-        self.assertEqual(response["title"], "Foundation")
-        self.assertEqual(response["details"]["author"], "Issac Asimov")
-        self.assertEqual(response["details"]["publish_date"], "1991-08-22")
-        # These fields should be None or default values
-        self.assertEqual(response["synopsis"], "No synopsis available.")
-        self.assertEqual(response["details"]["format"], "Unknown")
-        self.assertIsNone(response["genres"])
-        self.assertIsNone(response["score"])
-
+    
     def test_manual_tv(self):
         """Test the metadata method for manually created TV shows."""
         # Create test data

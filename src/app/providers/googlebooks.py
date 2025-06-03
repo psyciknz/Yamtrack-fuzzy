@@ -256,56 +256,5 @@ def get_isbns(response):
     return None
 
 
-async def get_editions(response_book, response_work):
-    """Get list of editions asynchronously."""
-    book_id = extract_openlibrary_id(response_book.get("key", ""))
-    work_id = extract_openlibrary_id(response_work.get("key", ""))
-
-    if not work_id:
-        work_id = book_id
-
-    # limit to 500 editions, pagination is not supported
-    url = f"https://openlibrary.org/works/{work_id}/editions.json?limit=500"
-
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
-        if response.status == requests.codes.ok:
-            data = await response.json()
-            return [
-                {
-                    "source": Sources.GOOGLEBOOKS.value,
-                    "source_url": f"https://openlibrary.org/books/{extract_openlibrary_id(edition['key'])}",
-                    "media_id": extract_openlibrary_id(edition["key"]),
-                    "media_type": MediaTypes.BOOK.value,
-                    "title": edition.get("title"),
-                    "image": get_cover_image_url(edition),
-                }
-                for edition in data["entries"]
-                if extract_openlibrary_id(edition["key"]) != book_id
-                and edition.get("title")
-            ]
-    return []
 
 
-async def get_ratings(response_work):
-    """Get ratings data for a book asynchronously."""
-    work_id = extract_openlibrary_id(response_work.get("key", ""))
-
-    if not work_id:
-        return None, None
-
-    url = f"https://openlibrary.org/works/{work_id}/ratings.json"
-
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
-        if response.status == requests.codes.ok:
-            data = await response.json()
-            summary = data.get("summary", {})
-            average = summary.get("average")
-            count = summary.get("count")
-
-            if average and count:
-                # Convert to 10-point scale (multiply by 2) and round to 1 decimal place
-                score = round(summary["average"] * 2, 1)
-                score_count = summary["count"]
-                return score, score_count
-
-    return None, None
