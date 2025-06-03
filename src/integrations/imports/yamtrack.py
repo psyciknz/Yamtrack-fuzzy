@@ -1,14 +1,14 @@
 import logging
 from csv import DictReader
 
-import requests
 from django.apps import apps
 from django.conf import settings
 
 import app
-import app.providers
 from app.models import TV, Episode, MediaTypes, Season, Sources
+from app.providers import services
 from integrations import helpers
+from integrations.helpers import MediaImportError, MediaImportUnexpectedError
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,12 @@ def importer(file, user, mode):
     """Import media from CSV file."""
     logger.info("Starting Yamtrack import with mode %s", mode)
 
-    decoded_file = file.read().decode("utf-8").splitlines()
+    try:
+        decoded_file = file.read().decode("utf-8").splitlines()
+    except UnicodeDecodeError as e:
+        msg = "Invalid file format. Please upload a CSV file."
+        raise MediaImportError(msg) from e
+
     reader = DictReader(decoded_file)
 
     bulk_media = {media_type: [] for media_type in MediaTypes.values}
@@ -25,7 +30,11 @@ def importer(file, user, mode):
     warnings = []
 
     for row in reader:
-        add_bulk_media(row, user, bulk_media, warnings)
+        try:
+            add_bulk_media(row, user, bulk_media, warnings)
+        except Exception as error:
+            error_msg = f"Error processing entry: {row}"
+            raise MediaImportUnexpectedError(error_msg) from error
 
     for media_type in MediaTypes.values:
         imported_counts[media_type] = import_media(
@@ -55,7 +64,7 @@ def add_bulk_media(row, user, bulk_media, warnings):
             row["image"] = settings.IMG_NONE
         else:
             try:
-                metadata = app.providers.services.get_media_metadata(
+                metadata = services.get_media_metadata(
                     media_type,
                     row["media_id"],
                     row["source"],
@@ -64,7 +73,7 @@ def add_bulk_media(row, user, bulk_media, warnings):
                 )
                 row["title"] = metadata["title"]
                 row["image"] = metadata["image"]
-            except requests.exceptions.HTTPError as e:
+            except services.ProviderAPIError as e:
                 warnings.append(
                     f"Failed to fetch metadata for {row['media_id']}: {e!s}",
                 )

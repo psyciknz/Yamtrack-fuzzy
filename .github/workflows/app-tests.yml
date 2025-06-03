@@ -1,10 +1,9 @@
 name: App Tests
 
-# Change trigger to pull_request_target for handling fork PRs safely
 on:
-  pull_request_target:
+  pull_request:
     paths-ignore:
-      - '.github/workflows/**'
+      - ".github/workflows/**"
   push:
     branches:
       - main
@@ -12,14 +11,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  # Restrict permissions to minimum required
   contents: read
   pull-requests: read
 
 jobs:
   check-workflow-changes:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request'
     steps:
       - name: Check for workflow modifications
         uses: dorny/paths-filter@v3
@@ -28,7 +26,6 @@ jobs:
           filters: |
             workflows:
               - '.github/workflows/**'
-      
       - name: Fail if workflows were modified
         if: steps.changes.outputs.workflows == 'true'
         run: |
@@ -49,11 +46,11 @@ jobs:
           github.event_name == 'pull_request_target' && 
           needs.check-workflow-changes.result == 'failure'
         run: exit 1
-        
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -68,13 +65,17 @@ jobs:
         run: |
           ruff check src
 
+      - name: Set environment variables from secrets
+        run: |
+          if [ -n "${{ secrets.SECRET }}" ]; then echo "SECRET=${{ secrets.SECRET }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.TMDB_API }}" ]; then echo "TMDB_API=${{ secrets.TMDB_API }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.MAL_API }}" ]; then echo "MAL_API=${{ secrets.MAL_API }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.IGDB_ID }}" ]; then echo "IGDB_ID=${{ secrets.IGDB_ID }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.IGDB_SECRET }}" ]; then echo "IGDB_SECRET=${{ secrets.IGDB_SECRET }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.HARDCOVER_API }}" ]; then echo "HARDCOVER_API=${{ secrets.HARDCOVER_API }}" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.COMICVINE_API }}" ]; then echo "COMICVINE_API=${{ secrets.COMICVINE_API }}" >> $GITHUB_ENV; fi
+
       - name: Run Tests
-        env:
-          SECRET: ${{ secrets.SECRET }}
-          TMDB_API: ${{ secrets.TMDB_API }}
-          MAL_API: ${{ secrets.MAL_API }}
-          IGDB_ID: ${{ secrets.IGDB_ID }}
-          IGDB_SECRET: ${{ secrets.IGDB_SECRET }}
         run: |
           coverage run src/manage.py test app users integrations lists events --parallel
 
@@ -84,7 +85,7 @@ jobs:
           coverage report
           coverage xml
 
-      - name: Upload coverage reports to Codecov with GitHub Action
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

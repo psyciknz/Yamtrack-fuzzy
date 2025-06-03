@@ -364,14 +364,12 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                     episodes_to_update.append(episode_item)
                     episode_count += 1
 
-            # Log before bulk update
             logger.info(
                 "Found %s existing episodes to update for %s",
                 episode_count,
                 title,
             )
 
-            # Bulk update existing episodes
             if episodes_to_update:
                 updated_count = Item.objects.bulk_update(
                     episodes_to_update,
@@ -522,8 +520,8 @@ def media_delete(request):
 def episode_handler(request):
     """Handle the creation, deletion, and updating of episodes for a season."""
     media_id = request.POST["media_id"]
-    season_number = request.POST["season_number"]
-    episode_number = request.POST["episode_number"]
+    season_number = int(request.POST["season_number"])
+    episode_number = int(request.POST["episode_number"])
     source = request.POST["source"]
 
     try:

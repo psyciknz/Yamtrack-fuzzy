@@ -100,7 +100,7 @@ class Item(CalendarTriggerMixin, models.Model):
             ),
             # Enforces that season items must have a season number but no episode number
             CheckConstraint(
-                check=Q(
+                condition=Q(
                     media_type=MediaTypes.SEASON.value,
                     season_number__isnull=False,
                     episode_number__isnull=True,
@@ -110,7 +110,7 @@ class Item(CalendarTriggerMixin, models.Model):
             ),
             # Enforces that episode items must have both season and episode numbers
             CheckConstraint(
-                check=Q(
+                condition=Q(
                     media_type=MediaTypes.EPISODE.value,
                     season_number__isnull=False,
                     episode_number__isnull=False,
@@ -120,7 +120,7 @@ class Item(CalendarTriggerMixin, models.Model):
             ),
             # Prevents season/episode numbers from being set on non-TV media types
             CheckConstraint(
-                check=Q(
+                condition=Q(
                     ~Q(
                         media_type__in=[
                             MediaTypes.SEASON.value,
@@ -135,7 +135,7 @@ class Item(CalendarTriggerMixin, models.Model):
             ),
             # Validate source choices
             CheckConstraint(
-                check=Q(source__in=Sources.values),
+                condition=Q(source__in=Sources.values),
                 name="%(app_label)s_%(class)s_source_valid",
             ),
             # Validate media_type choices
@@ -665,6 +665,7 @@ class Media(models.Model):
         inherit=True,
         excluded_fields=[
             "item",
+            "progress_changed",
             "user",
             "related_tv",
         ],
@@ -759,7 +760,11 @@ class Media(models.Model):
             if max_progress:
                 self.progress = max_progress
 
-            if self.tracker.previous("status") == self.Status.REPEATING.value:
+            previous_repeating = (
+                self.tracker.previous("status") == self.Status.REPEATING.value
+            )
+            repeat_count_not_updated = self.repeats == self.tracker.previous("repeats")
+            if previous_repeating and repeat_count_not_updated:
                 self.repeats += 1
 
         self.item.fetch_releases(delay=True)

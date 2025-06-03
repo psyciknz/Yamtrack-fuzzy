@@ -7,8 +7,9 @@ from django.utils.dateparse import parse_datetime
 
 import app
 from app.models import Media, MediaTypes, Sources
+from app.providers import services
 from integrations import helpers
-from integrations.helpers import MediaImportError
+from integrations.helpers import MediaImportError, MediaImportUnexpectedError
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,8 @@ def get_token(request):
             headers=headers,
             params=params,
         )
-    except requests.exceptions.HTTPError as error:
-        if error.response.status_code == requests.codes.unauthorized:
+    except services.ProviderAPIError as error:
+        if error.status_code == requests.codes.unauthorized:
             msg = "Invalid SIMKL secret key."
             raise MediaImportError(msg) from error
         raise
@@ -62,10 +63,10 @@ def importer(token, user, mode):
 
     bulk_media = {
         MediaTypes.TV.value: [],
-        MediaTypes.MOVIE.value: [],
-        MediaTypes.ANIME.value: [],
         MediaTypes.SEASON.value: [],
         MediaTypes.EPISODE.value: [],
+        MediaTypes.MOVIE.value: [],
+        MediaTypes.ANIME.value: [],
     }
     warnings = []
 
@@ -81,6 +82,11 @@ def importer(token, user, mode):
     imported_counts = {}
     for media_type, bulk_list in bulk_media.items():
         if bulk_list:
+            if media_type == MediaTypes.SEASON.value:
+                helpers.update_season_references(bulk_list, user)
+            elif media_type == MediaTypes.EPISODE.value:
+                helpers.update_episode_references(bulk_list, user)
+
             imported_counts[media_type] = helpers.bulk_chunk_import(
                 bulk_list,
                 apps.get_model(app_label="app", model_name=media_type),
@@ -88,12 +94,7 @@ def importer(token, user, mode):
                 mode,
             )
 
-    return (
-        imported_counts.get(MediaTypes.TV.value, 0),
-        imported_counts.get(MediaTypes.MOVIE.value, 0),
-        imported_counts.get(MediaTypes.ANIME.value, 0),
-        "\n".join(warnings),
-    )
+    return imported_counts, "\n".join(warnings)
 
 
 def get_user_list(token):
@@ -106,6 +107,7 @@ def get_user_list(token):
     params = {
         "extended": "full",
         "episode_watched_at": "yes",
+        "memos": "yes",
     }
 
     return app.providers.services.api_request(
@@ -129,13 +131,15 @@ def process_tv_list(tv_list, user, bulk_media, warnings):
 
             try:
                 tmdb_id = tv["show"]["ids"]["tmdb"]
-            except KeyError as error:
-                msg = f"{title}: No TMDB ID found"
-                raise MediaImportError(msg) from error
+            except KeyError:
+                warnings.append(f"{title}: No TMDB ID found")
+                continue
 
             if tmdb_id in existing_tv_ids:
-                msg = f"{title} ({tmdb_id}) already present in the import list"
-                raise MediaImportError(msg)  # noqa: TRY301
+                warnings.append(
+                    f"{title} ({tmdb_id}) already present in the import list",
+                )
+                continue
 
             tv_status = get_status(tv["status"])
 
@@ -146,10 +150,13 @@ def process_tv_list(tv_list, user, bulk_media, warnings):
 
             try:
                 metadata = app.providers.tmdb.tv_with_seasons(tmdb_id, season_numbers)
-            except requests.exceptions.HTTPError as error:
-                if error.response.status_code == requests.codes.not_found:
-                    msg = f"{title}: Couldn't fetch metadata from TMDB ({tmdb_id})"
-                    raise MediaImportError(msg) from error
+            except services.ProviderAPIError as error:
+                if error.status_code == requests.codes.not_found:
+                    warnings.append(
+                        f"{title}: not found in {Sources.TMDB.label} "
+                        f"with ID {tmdb_id}.",
+                    )
+                    continue
                 raise
 
             tv_item, _ = app.models.Item.objects.get_or_create(
@@ -167,6 +174,7 @@ def process_tv_list(tv_list, user, bulk_media, warnings):
                 user=user,
                 status=tv_status,
                 score=tv["user_rating"],
+                notes=tv["memo"]["text"] if tv["memo"] != {} else "",
             )
             bulk_media[MediaTypes.TV.value].append(tv_instance)
             existing_tv_ids.add(tmdb_id)
@@ -182,18 +190,11 @@ def process_tv_list(tv_list, user, bulk_media, warnings):
                     bulk_media,
                 )
 
-        except MediaImportError as error:
-            warnings.append(str(error))
         except Exception as error:
-            logger.exception("Error processing %s", title)
-            warnings.append(
-                f"{title}: Unexpected error: {{{error}}}, check logs for more data",
-            )
+            msg = f"Error processing entry: {tv}"
+            raise MediaImportUnexpectedError(msg) from error
 
     logger.info("Processed %d tv shows", len(tv_list))
-
-    helpers.update_season_references(bulk_media[MediaTypes.SEASON.value], user)
-    helpers.update_episode_references(bulk_media[MediaTypes.EPISODE.value], user)
 
 
 def process_seasons_and_episodes(
@@ -281,22 +282,27 @@ def process_movie_list(movie_list, user, bulk_media, warnings):
 
             try:
                 tmdb_id = movie["movie"]["ids"]["tmdb"]
-            except KeyError as error:
-                msg = f"{title}: No TMDB ID found"
-                raise MediaImportError(msg) from error
+            except KeyError:
+                warnings.append(f"{title}: No TMDB ID found")
+                continue
 
             if tmdb_id in existing_movie_ids:
-                msg = f"{title} ({tmdb_id}) already present in the import list"
-                raise MediaImportError(msg)  # noqa: TRY301
+                warnings.append(
+                    f"{title} ({tmdb_id}) already present in the import list",
+                )
+                continue
 
             movie_status = get_status(movie["status"])
 
             try:
                 metadata = app.providers.tmdb.movie(tmdb_id)
-            except requests.exceptions.HTTPError as error:
-                if error.response.status_code == requests.codes.not_found:
-                    msg = f"{title}: Couldn't fetch metadata from TMDB ({tmdb_id})"
-                    raise MediaImportError(msg) from error
+            except services.ProviderAPIError as error:
+                if error.status_code == requests.codes.not_found:
+                    warnings.append(
+                        f"{title}: not found in {Sources.TMDB.label} "
+                        f"with ID {tmdb_id}.",
+                    )
+                    continue
                 raise
 
             movie_item, _ = app.models.Item.objects.get_or_create(
@@ -316,17 +322,14 @@ def process_movie_list(movie_list, user, bulk_media, warnings):
                 score=movie["user_rating"],
                 start_date=get_date(movie["last_watched_at"]),
                 end_date=get_date(movie["last_watched_at"]),
+                notes=movie["memo"]["text"] if movie["memo"] != {} else "",
             )
             bulk_media[MediaTypes.MOVIE.value].append(movie_instance)
             existing_movie_ids.add(tmdb_id)
 
-        except MediaImportError as error:
-            warnings.append(str(error))
         except Exception as error:
-            logger.exception("Error processing %s", title)
-            warnings.append(
-                f"{title}: Unexpected error: {{{error}}}, check logs for more data",
-            )
+            msg = f"Error processing entry: {movie}"
+            raise MediaImportUnexpectedError(msg) from error
 
     logger.info("Processed %d movies", len(movie_list))
 
@@ -343,22 +346,26 @@ def process_anime_list(anime_list, user, bulk_media, warnings):
 
             try:
                 mal_id = anime["show"]["ids"]["mal"]
-            except KeyError as error:
-                msg = f"{title}: No MyAnimeList ID found"
-                raise MediaImportError(msg) from error
+            except KeyError:
+                warnings.append(f"{title}: No MyAnimeList ID found")
+                continue
 
             if mal_id in existing_anime_ids:
-                msg = f"{title} ({mal_id}) already present in the import list"
-                raise MediaImportError(msg)  # noqa: TRY301
+                warnings.append(
+                    f"{title} ({mal_id}) already present in the import list",
+                )
+                continue
 
             anime_status = get_status(anime["status"])
 
             try:
                 metadata = app.providers.mal.anime(mal_id)
-            except requests.exceptions.HTTPError as error:
-                if error.response.status_code == requests.codes.not_found:
-                    msg = f"{title}: Couldn't fetch metadata from MAL ({mal_id})"
-                    raise MediaImportError(msg) from error
+            except services.ProviderAPIError as error:
+                if error.status_code == requests.codes.not_found:
+                    warnings.append(
+                        f"{title}: not found in {Sources.MAL.label} with ID {mal_id}.",
+                    )
+                    continue
                 raise
 
             anime_item, _ = app.models.Item.objects.get_or_create(
@@ -379,17 +386,14 @@ def process_anime_list(anime_list, user, bulk_media, warnings):
                 progress=anime["watched_episodes_count"],
                 start_date=get_start_date(anime),
                 end_date=get_end_date(anime_status, anime["last_watched_at"]),
+                notes=anime["memo"]["text"] if anime["memo"] != {} else "",
             )
             bulk_media[MediaTypes.ANIME.value].append(anime_instance)
             existing_anime_ids.add(mal_id)
 
-        except MediaImportError as error:
-            warnings.append(str(error))
         except Exception as error:
-            logger.exception("Error processing %s", title)
-            warnings.append(
-                f"{title}: Unexpected error: {{{error}}}, check logs for more data",
-            )
+            msg = f"Error processing entry: {anime}"
+            raise MediaImportUnexpectedError(msg) from error
 
     logger.info("Processed %d anime", len(anime_list))
 
