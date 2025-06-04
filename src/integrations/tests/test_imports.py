@@ -308,6 +308,104 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 3)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value][1]), 1)
      
+    @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_history(self, mock_get_metadata,mock_get_paginated_data):
+        """Test processing a movie entry."""
+        #
+        
+        mock_get_paginated_data.return_value = [
+            {
+        "id": 635420548,
+        "watched_at": "2013-08-11T09:37:18.000Z",
+        "action": "checkin",
+        "type": "episode",
+        "episode": {
+            "season": 3,
+            "number": 2,
+            "title": "Dead Man's Party",
+            "ids": {
+                "trakt": 5263,
+                "tvdb": 37,
+                "imdb": "tt0533411",
+                "tmdb": 949448,
+                "tvrage": None
+            }
+        },
+        "show": {
+            "title": "Buffy the Vampire Slayer",
+            "year": 1997,
+            "ids": {
+                "trakt": 94,
+                "slug": "buffy-the-vampire-slayer",
+                "tvdb": 70327,
+                "imdb": "tt0118276",
+                "tmdb": 95,
+                "tvrage": None
+            }
+        }
+    },
+            {
+        "id": 5341775645,
+        "watched_at": "1998-10-06T04:00:00.000Z",
+        "action": "watch",
+        "type": "episode",
+        "episode": {
+            "season": 3,
+            "number": 2,
+            "title": "Dead Man's Party",
+            "ids": {
+                "trakt": 5263,
+                "tvdb": 37,
+                "imdb": "tt0533411",
+                "tmdb": 949448,
+                "tvrage": None
+            }
+        },
+        "show": {
+            "title": "Buffy the Vampire Slayer",
+            "year": 1997,
+            "ids": {
+                "trakt": 94,
+                "slug": "buffy-the-vampire-slayer",
+                "tvdb": 70327,
+                "imdb": "tt0118276",
+                "tmdb": 95,
+                "tvrage": None
+            }
+        }
+    }
+        ]
+
+           # Mock metadata for TV, Season, and Episode
+        
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Buffy the Vampire Slayer",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 5,
+                    "max_progress": 1,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 3",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 2, "still_path": "/still.jpg"}],
+                    "max_progress": 1,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+     
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_history()
+        
+        # Check that the movie was added to bulk media
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value][0]), 2)
+        self.assertEqual(len(trakt_importer.media_instances[MediaTypes.MOVIE.value]), 1)
+
     
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")

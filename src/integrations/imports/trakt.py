@@ -1,3 +1,4 @@
+import json
 import logging
 from collections import defaultdict
 
@@ -251,7 +252,9 @@ class TraktImporter:
         logger.info("Importing watch history for user %s", self.username)
         history_endpoint = f"{self.user_base_url}/history"
         full_history = self._get_paginated_data(history_endpoint, "history entries")
-
+        #with open('trakt_history.json', 'w', encoding='utf-8') as f:
+        #    json.dump(full_history, f, ensure_ascii=False, indent=4)
+    
         # Process in chronological order (oldest first)
         for entry in reversed(full_history):
             watched_at = entry["watched_at"]
