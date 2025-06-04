@@ -13,7 +13,7 @@
             "args": [
                 "runserver",
                 "celery",
-                "-A",
+                "--app",
                 "config",
                 "worker",
                 "--beat",
@@ -30,6 +30,35 @@
             ],
             "django": true
         },
+        // launch.json
+        {
+            "name": "Celery",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "console": "integratedTerminal",
+            "args": [
+                "--app",
+                "config",
+                "worker",
+                "--loglevel",
+                "DEBUG",
+                "--pool",
+                "solo",
+                "--without-mingle",
+                "--without-gossip"
+            ]
+        },
+        {
+            "name": "Django",
+            "type": "debugpy",
+            "request": "launch",
+            "stopOnEntry": false,
+            "program": "${workspaceRoot}/src/manage.py",
+            "args": [
+                "runserver"
+            ],
+        },
         {
             "name": "Test File",
             "type": "debugpy",
@@ -43,5 +72,14 @@
             ],
             "django": true
         }
-    ]
+    ],
+    "compounds": [
+        {
+            "name": "Celery and Django",
+            "configurations": [
+                "Celery",
+                "Django"
+            ]
+        }
+    ],
 }

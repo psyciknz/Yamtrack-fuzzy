@@ -9,19 +9,8 @@ from django.test import TestCase
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 import integrations
-from app.models import (
-    TV,
-    Anime,
-    Episode,
-    Game,
-    Item,
-    Manga,
-    Media,
-    MediaTypes,
-    Movie,
-    Season,
-    Sources,
-)
+from app.models import (TV, Anime, Episode, Game, Item, Manga, Media,
+                        MediaTypes, Movie, Season, Sources)
 from integrations import helpers
 from integrations.imports import anilist, hltb, kitsu, mal, simkl, yamtrack
 from integrations.imports.trakt import TraktImporter, importer
@@ -285,6 +274,41 @@ class ImportTrakt(TestCase):
         trakt_importer.process_watched_movie(movie_entry)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 2)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value][1]), 1)
+        
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_with_history(self, mock_get_metadata):
+        """Test processing a movie entry."""
+        movie_entry = {
+            "type": "movie",
+            "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+            "watched_at": "2023-01-02T00:00:00.000Z",
+        }
+
+        mock_get_metadata.return_value = {
+            "title": "Test Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_movie(movie_entry)
+
+        # Check that the movie was added to bulk media
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]), 1)
+        self.assertEqual(len(trakt_importer.media_instances[MediaTypes.MOVIE.value]), 1)
+
+        # Process the same movie again to test repeat handling
+        movie_entry["watched_at"] = "2023-01-03T00:00:00.000Z"
+        trakt_importer.process_watched_movie(movie_entry)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 2)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value][1]), 1)
+        
+        # Process the same movie again to test repeat handling
+        movie_entry["watched_at"] = "2023-01-04T00:00:00.000Z"
+        trakt_importer.process_watched_movie(movie_entry)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 3)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value][1]), 1)
+     
+    
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode(self, mock_get_metadata):
@@ -328,6 +352,58 @@ class ImportTrakt(TestCase):
         trakt_importer.process_watched_episode(episode_entry)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 2)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value][1]), 1)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_episodes(self, mock_get_metadata):
+        """Test processing an episode entry."""
+        episode_entry = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+        episode_entry2 = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-02T00:00:00.000Z",
+        }
+        
+
+        # Mock metadata for TV, Season, and Episode
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 1,
+                    "max_progress": 1,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 1, "still_path": "/still.jpg"}],
+                    "max_progress": 1,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(episode_entry)
+        trakt_importer.process_watched_episode(episode_entry2)
+
+        # Check that all objects were added to bulk media
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value][0]), 1)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.SEASON.value][0]), 1)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value][0]), 2)
+
+        # Process the same episode again to test repeat handling
+        trakt_importer.process_watched_episode(episode_entry)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 2)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value][1]), 2)
+
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
@@ -635,7 +711,7 @@ class HelpersTest(TestCase):
                     media_id="2",
                     source=Sources.TMDB.value,
                     media_type=MediaTypes.TV.value,
-                    title="Test Show 2",
+                    title="Test Show 2"
                 ),
                 user=self.user,
                 status=Media.Status.COMPLETED.value,

@@ -58,6 +58,38 @@ class TraktImporter:
             mode,
         )
 
+    def api_auth(_trakt, _headers, options):
+        """API call for authentification OAUTH"""
+        print(
+            "Manual authentification. Open the link in a browser and paste the pincode when prompted"
+        )
+        print(("https://trakt.tv/oauth/authorize?response_type=code&"
+            "client_id={0}&redirect_uri=urn:ietf:wg:oauth:2.0:oob".format(
+                _trakt["client_id"])))
+        pincode = str(input('Input:'))
+        url = _trakt['baseurl'] + '/oauth/token'
+        values = {
+            "code": pincode,
+            "client_id": _trakt["client_id"],
+            "client_secret": _trakt["client_secret"],
+            "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+            "grant_type": "authorization_code"
+        }
+
+        request = requests.post(url, data=values)
+        response = request.json()
+        _headers['Authorization'] = 'Bearer ' + response["access_token"]
+        _headers['trakt-api-key'] = _trakt['client_id']
+        config = _trakt['config_parser']
+        config.set('TRAKT', 'ACCESS_TOKEN', response["access_token"])
+        config.set('TRAKT', 'REFRESH_TOKEN', response["refresh_token"])
+        with open(options.config, 'w') as configfile:
+            config.write(configfile)
+            print('Saved as "access_token" in file {0}: {1}'.format(
+                options.config, response["access_token"]))
+            print('Saved as "refresh_token" in file {0}: {1}'.format(
+                options.config, response["refresh_token"]))
+
     def _get_existing_media(self):
         """Get all existing media for the user to check against during import."""
         existing = {
