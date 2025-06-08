@@ -1,47 +1,28 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python Debugger: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "src\\manage.py ",
-            "console": "integratedTerminal",
-            "args": [
-                "runserver",
-                "celery",
-                "-A",
-                "config",
-                "worker",
-                "--beat",
-                "--scheduler",
-                "django",
-                "--loglevel",
-                "DEBUG",
-                "tailwindcss",
-                "-i",
-                "./static/css/input.css",
-                "-o",
-                "./static/css/tailwind.css",
-                "--watch"
-            ],
-            "django": true
-        },
-        {
-            "name": "Test File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/manage.py",
-            "args": [
-                "test",
-                "--noinput",
-                "--keepdb",
-                "src/app/tests/test_providers.py"
-            ],
-            "django": true
-        }
-    ]
+  "editor.formatOnSave": true,
+  "[django-html]": {
+    "editor.tabSize": 2
+  },
+  "[css]": {
+    "editor.tabSize": 2
+  },
+  "[javascript]": {
+    "editor.tabSize": 2
+  },
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  },
+  "[html][django-html][handlebars][hbs][mustache][jinja][jinja-html][nj][njk][nunjucks][twig]": {
+    "editor.defaultFormatter": "monosans.djlint"
+  },
+  "python.testing.pytestArgs": [
+    "src"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
 }
