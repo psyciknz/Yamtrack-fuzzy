@@ -294,3 +294,26 @@ def regenerate_token(request):
         except IntegrityError:
             continue
     return redirect("integrations")
+
+
+@require_POST
+def update_plex_usernames(request):
+    """Update the Plex usernames for the user."""
+    usernames = request.POST.get("plex_usernames", "")
+
+    username_list = [u.strip() for u in usernames.split(",") if u.strip()]
+
+    seen = set()
+    deduplicated_usernames = [
+        u for u in username_list if not (u in seen or seen.add(u))
+    ]
+
+    # Reconstruct with comma-space separation
+    cleaned_usernames = ", ".join(deduplicated_usernames)
+
+    if cleaned_usernames != request.user.plex_usernames:
+        request.user.plex_usernames = cleaned_usernames
+        request.user.save(update_fields=["plex_usernames"])
+        messages.success(request, "Plex usernames updated successfully")
+
+    return redirect("integrations")

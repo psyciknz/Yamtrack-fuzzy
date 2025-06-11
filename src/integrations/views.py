@@ -15,9 +15,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 import users
-from integrations import exports, helpers, tasks
-from integrations.imports import simkl
-from integrations.webhooks import jellyfin
+from integrations import exports, tasks
+from integrations.imports import helpers, simkl
+from integrations.webhooks import emby, jellyfin, plex
 
 logger = logging.getLogger(__name__)
 
@@ -236,5 +236,64 @@ def jellyfin_webhook(request, token):
         return HttpResponse(status=401)
 
     payload = json.loads(request.body)
-    jellyfin.process_payload(payload, user)
+    processor = jellyfin.JellyfinWebhookProcessor()
+    processor.process_payload(payload, user)
+    return HttpResponse(status=200)
+
+
+@login_not_required
+@csrf_exempt
+@require_POST
+def plex_webhook(request, token):
+    """Handle Plex webhook notifications for media playback."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning(
+            "Could not process Plex webhook: Invalid token: %s",
+            token,
+        )
+        return HttpResponse(status=401)
+
+    # https://support.plex.tv/hc/en-us/articles/115002267687-Webhooks
+    # As stated above, the payload is sent in JSON format inside a multipart
+    # HTTP POST request. For the media.play and media.rate events, a second part of
+    # the POST request contains a JPEG thumbnail for the media.
+
+    # Access payload data
+    data = request.POST.get("payload")
+    if not data:
+        return HttpResponse("Missing payload", status=400)
+
+    payload = json.loads(data)
+    processor = plex.PlexWebhookProcessor()
+    processor.process_payload(payload, user)
+    return HttpResponse(status=200)
+
+
+@login_not_required
+@csrf_exempt
+@require_POST
+def emby_webhook(request, token):
+    """Handle Emby webhook notifications for media playback."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning(
+            "Could not process Emby webhook: Invalid token: %s",
+            token,
+        )
+        return HttpResponse(status=401)
+
+    # The payload is sent in JSON format inside a multipart
+    # HTTP POST request.
+
+    # Access payload data
+    data = request.POST.get("data")
+    if not data:
+        return HttpResponse("Missing payload", status=400)
+
+    payload = json.loads(data)
+    processor = emby.EmbyWebhookProcessor()
+    processor.process_payload(payload, user)
     return HttpResponse(status=200)

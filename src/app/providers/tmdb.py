@@ -93,6 +93,34 @@ def search(media_type, query, page):
     return data
 
 
+def find(external_id, external_source):
+    """Search for media on TMDB."""
+    cache_key = f"find_{Sources.TMDB.value}_{external_id}_{external_source}"
+    data = cache.get(cache_key)
+
+    if data is None:
+        url = f"{base_url}/find/{external_id}"
+
+        params = {
+            **base_params,
+            "external_source": external_source,
+        }
+
+        try:
+            response = services.api_request(
+                Sources.TMDB.value,
+                "GET",
+                url,
+                params=params,
+            )
+        except requests.exceptions.HTTPError as error:
+            handle_error(error)
+
+        cache.set(cache_key, data)
+
+    return response
+
+
 def movie(media_id):
     """Return the metadata for the selected movie from The Movie Database."""
     cache_key = f"{Sources.TMDB.value}_{MediaTypes.MOVIE.value}_{media_id}"
@@ -206,13 +234,15 @@ def tv_with_seasons(media_id, season_numbers):
             season_key = f"season/{season_number}"
             if season_key not in response:
                 msg = (
-                    f"Season {season_number} not found for {media_id} "
-                    f"in {Sources.TMDB.label}."
+                    f"Season {season_number} not found in {Sources.TMDB.label} "
+                    f"with ID {media_id}."
                 )
                 # Create a new response object with 404 status
                 not_found_response = requests.Response()
                 not_found_response.status_code = 404
-                raise requests.exceptions.HTTPError(msg, response=not_found_response)
+                # Set the error attribute to match what ProviderAPIError expects
+                not_found_error = type("Error", (), {"response": not_found_response})
+                raise services.ProviderAPIError(msg, error=not_found_error, details=msg)
 
             season_data = process_season(response[season_key])
 
@@ -267,6 +297,7 @@ def process_tv(response):
     """Process the metadata for the selected tv show from The Movie Database."""
     num_episodes = response["number_of_episodes"]
     next_episode = response.get("next_episode_to_air")
+    last_episode = response.get("last_episode_to_air")
     return {
         "media_id": response["id"],
         "source": Sources.TMDB.value,
@@ -303,6 +334,7 @@ def process_tv(response):
             ),
         },
         "tvdb_id": response["external_ids"]["tvdb_id"],
+        "last_episode_season": last_episode["season_number"] if last_episode else None,
         "next_episode_season": next_episode["season_number"] if next_episode else None,
     }
 
@@ -331,7 +363,7 @@ def process_season(response):
         "source": Sources.TMDB.value,
         "media_type": MediaTypes.SEASON.value,
         "season_title": response["name"],
-        "max_progress": num_episodes,
+        "max_progress": episodes[-1]["episode_number"] if episodes else 0,
         "image": get_image_url(response["poster_path"]),
         "season_number": response["season_number"],
         "synopsis": get_synopsis(response["overview"]),
@@ -494,33 +526,30 @@ def process_episodes(season_metadata, episodes_in_db):
     episodes_metadata = []
 
     # Convert the queryset to a dictionary for efficient lookups
-    tracked_episodes = {ep["item__episode_number"]: ep for ep in episodes_in_db}
+    tracked_episodes = {}
+    for ep in episodes_in_db:
+        episode_number = ep.item.episode_number
+        if episode_number not in tracked_episodes:
+            tracked_episodes[episode_number] = []
+        tracked_episodes[episode_number].append(ep)
 
     for episode in season_metadata["episodes"]:
         episode_number = episode["episode_number"]
-        watched = episode_number in tracked_episodes
 
         episodes_metadata.append(
             {
                 "media_id": season_metadata["media_id"],
-                "season_number": season_metadata["season_number"],
                 "media_type": MediaTypes.EPISODE.value,
                 "source": Sources.TMDB.value,
+                "season_number": season_metadata["season_number"],
                 "episode_number": episode_number,
                 "air_date": episode["air_date"],  # when unknown, response returns null
                 "image": get_image_url(episode["still_path"]),
                 "title": episode["name"],
                 "overview": episode["overview"],
-                "watched": watched,
-                "end_date": (
-                    tracked_episodes[episode_number]["end_date"] if watched else None
-                ),
-                "repeats": (
-                    tracked_episodes[episode_number]["repeats"] if watched else None
-                ),
+                "history": tracked_episodes.get(episode_number, []),
             },
         )
-
     return episodes_metadata
 
 

@@ -5,7 +5,7 @@ from django.db import models
 from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
-from app.models import Item, Media, MediaTypes
+from app.models import Item, MediaTypes, Status
 from users import helpers
 
 EXCLUDED_SEARCH_TYPES = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
@@ -43,12 +43,11 @@ class MediaStatusChoices(models.TextChoices):
     """Choices for media list status options."""
 
     ALL = "All", "All"
-    COMPLETED = Media.Status.COMPLETED.value, Media.Status.COMPLETED.label
-    IN_PROGRESS = Media.Status.IN_PROGRESS.value, Media.Status.IN_PROGRESS.label
-    REPEATING = Media.Status.REPEATING.value, Media.Status.REPEATING.label
-    PLANNING = Media.Status.PLANNING.value, Media.Status.PLANNING.label
-    PAUSED = Media.Status.PAUSED.value, Media.Status.PAUSED.label
-    DROPPED = Media.Status.DROPPED.value, Media.Status.DROPPED.label
+    COMPLETED = Status.COMPLETED.value, Status.COMPLETED.label
+    IN_PROGRESS = Status.IN_PROGRESS.value, Status.IN_PROGRESS.label
+    PLANNING = Status.PLANNING.value, Status.PLANNING.label
+    PAUSED = Status.PAUSED.value, Status.PAUSED.label
+    DROPPED = Status.DROPPED.value, Status.DROPPED.label
 
 
 class LayoutChoices(models.TextChoices):
@@ -284,6 +283,11 @@ class User(AbstractUser):
         help_text="Token for external integrations",
     )
 
+    plex_usernames = models.TextField(
+        blank=True,
+        help_text="Comma-separated list of Plex usernames for webhook matching",
+    )
+
     class Meta:
         """Meta options for the model."""
 
@@ -291,107 +295,107 @@ class User(AbstractUser):
         constraints = [
             models.CheckConstraint(
                 name="last_search_type_valid",
-                check=models.Q(last_search_type__in=VALID_SEARCH_TYPES),
+                condition=models.Q(last_search_type__in=VALID_SEARCH_TYPES),
             ),
             models.CheckConstraint(
                 name="home_sort_valid",
-                check=models.Q(home_sort__in=HomeSortChoices.values),
+                condition=models.Q(home_sort__in=HomeSortChoices.values),
             ),
             models.CheckConstraint(
                 name="tv_layout_valid",
-                check=models.Q(tv_layout__in=LayoutChoices.values),
+                condition=models.Q(tv_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="season_layout_valid",
-                check=models.Q(season_layout__in=LayoutChoices.values),
+                condition=models.Q(season_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="movie_layout_valid",
-                check=models.Q(movie_layout__in=LayoutChoices.values),
+                condition=models.Q(movie_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="anime_layout_valid",
-                check=models.Q(anime_layout__in=LayoutChoices.values),
+                condition=models.Q(anime_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="manga_layout_valid",
-                check=models.Q(manga_layout__in=LayoutChoices.values),
+                condition=models.Q(manga_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="game_layout_valid",
-                check=models.Q(game_layout__in=LayoutChoices.values),
+                condition=models.Q(game_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="book_layout_valid",
-                check=models.Q(book_layout__in=LayoutChoices.values),
+                condition=models.Q(book_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="tv_sort_valid",
-                check=models.Q(tv_sort__in=MediaSortChoices.values),
+                condition=models.Q(tv_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="season_sort_valid",
-                check=models.Q(season_sort__in=MediaSortChoices.values),
+                condition=models.Q(season_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="movie_sort_valid",
-                check=models.Q(movie_sort__in=MediaSortChoices.values),
+                condition=models.Q(movie_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="anime_sort_valid",
-                check=models.Q(anime_sort__in=MediaSortChoices.values),
+                condition=models.Q(anime_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="manga_sort_valid",
-                check=models.Q(manga_sort__in=MediaSortChoices.values),
+                condition=models.Q(manga_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="game_sort_valid",
-                check=models.Q(game_sort__in=MediaSortChoices.values),
+                condition=models.Q(game_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="book_sort_valid",
-                check=models.Q(book_sort__in=MediaSortChoices.values),
+                condition=models.Q(book_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
                 name="calendar_layout_valid",
-                check=models.Q(calendar_layout__in=CalendarLayoutChoices.values),
+                condition=models.Q(calendar_layout__in=CalendarLayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="lists_sort_valid",
-                check=models.Q(lists_sort__in=ListSortChoices.values),
+                condition=models.Q(lists_sort__in=ListSortChoices.values),
             ),
             models.CheckConstraint(
                 name="list_detail_sort_valid",
-                check=models.Q(list_detail_sort__in=ListDetailSortChoices.values),
+                condition=models.Q(list_detail_sort__in=ListDetailSortChoices.values),
             ),
             models.CheckConstraint(
                 name="tv_status_valid",
-                check=models.Q(tv_status__in=MediaStatusChoices.values),
+                condition=models.Q(tv_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="season_status_valid",
-                check=models.Q(season_status__in=MediaStatusChoices.values),
+                condition=models.Q(season_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="movie_status_valid",
-                check=models.Q(movie_status__in=MediaStatusChoices.values),
+                condition=models.Q(movie_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="anime_status_valid",
-                check=models.Q(anime_status__in=MediaStatusChoices.values),
+                condition=models.Q(anime_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="manga_status_valid",
-                check=models.Q(manga_status__in=MediaStatusChoices.values),
+                condition=models.Q(manga_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="game_status_valid",
-                check=models.Q(game_status__in=MediaStatusChoices.values),
+                condition=models.Q(game_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="book_status_valid",
-                check=models.Q(book_status__in=MediaStatusChoices.values),
+                condition=models.Q(book_status__in=MediaStatusChoices.values),
             ),
         ]
 

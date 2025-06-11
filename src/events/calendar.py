@@ -394,7 +394,7 @@ def get_seasons_to_process(tv_item):
         logger.warning("No valid seasons found for TV show: %s", tv_item)
         return []
 
-    current_season = tv_metadata.get("next_episode_season")
+    next_episode_season = tv_metadata.get("next_episode_season")
 
     # Get existing events for this TV show's seasons
     existing_season_events = Event.objects.filter(
@@ -412,7 +412,7 @@ def get_seasons_to_process(tv_item):
         if season_num not in seasons_with_events:
             # No events for this season, process it
             seasons_to_process.append(season_num)
-        elif current_season and season_num >= current_season:
+        elif next_episode_season and season_num >= next_episode_season:
             # Current or future season, process it
             seasons_to_process.append(season_num)
 
@@ -421,10 +421,10 @@ def get_seasons_to_process(tv_item):
         return []
 
     logger.info(
-        "%s - Processing %d seasons (current season: %s)",
+        "%s - Processing %d seasons (Next episode season: %s)",
         tv_item,
         len(seasons_to_process),
-        current_season,
+        next_episode_season,
     )
 
     return seasons_to_process
@@ -545,6 +545,34 @@ def get_tvmaze_episode_map(tvdb_id):
         logger.info("%s - Using cached TVMaze episode map", tvdb_id)
         return cached_map
 
+    show_response = get_tvmaze_response(tvdb_id)
+
+    # Process episodes into the map format we need
+    tvmaze_map = {}
+
+    if show_response:
+        episodes = show_response["_embedded"]["episodes"]
+
+        for ep in episodes:
+            season_num = ep.get("season")
+            episode_num = ep.get("number")
+            if season_num is not None and episode_num is not None:
+                key = f"{season_num}_{episode_num}"
+                tvmaze_map[key] = ep.get("airstamp")
+
+    # Cache the processed map for 24 hours
+    cache.set(cache_key, tvmaze_map, timeout=86400)
+    logger.info(
+        "%s - Cached TVMaze episode map with %d entries",
+        tvdb_id,
+        len(tvmaze_map),
+    )
+
+    return tvmaze_map
+
+
+def get_tvmaze_response(tvdb_id):
+    """Fetch episode data from TVMaze using TVDB ID."""
     # First, lookup the TVMaze ID using the TVDB ID
     lookup_url = f"https://api.tvmaze.com/lookup/shows?thetvdb={tvdb_id}"
     try:
@@ -578,30 +606,9 @@ def get_tvmaze_episode_map(tvdb_id):
     show_url = f"https://api.tvmaze.com/shows/{tvmaze_id}?embed=episodes"
 
     try:
-        show_response = services.api_request("TVMaze", "GET", show_url)
+        return services.api_request("TVMaze", "GET", show_url)
     except requests.exceptions.HTTPError:
         return {}
-
-    # Process episodes into the map format we need
-    tvmaze_map = {}
-    episodes = show_response["_embedded"]["episodes"]
-
-    for ep in episodes:
-        season_num = ep.get("season")
-        episode_num = ep.get("number")
-        if season_num is not None and episode_num is not None:
-            key = f"{season_num}_{episode_num}"
-            tvmaze_map[key] = ep.get("airstamp")
-
-    # Cache the processed map for 24 hours
-    cache.set(cache_key, tvmaze_map, timeout=86400)
-    logger.info(
-        "%s - Cached TVMaze episode map with %d entries",
-        tvdb_id,
-        len(tvmaze_map),
-    )
-
-    return tvmaze_map
 
 
 def process_comic(item, events_bulk, skipped_items):
