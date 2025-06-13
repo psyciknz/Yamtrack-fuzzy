@@ -2,11 +2,8 @@ import logging
 
 from django.apps import apps
 from django.conf import settings
-from django.core.validators import (
-    DecimalValidator,
-    MaxValueValidator,
-    MinValueValidator,
-)
+from django.core.validators import (DecimalValidator, MaxValueValidator,
+                                    MinValueValidator)
 from django.db import models
 from django.db.models import (
     CheckConstraint,
@@ -21,7 +18,8 @@ from django.utils import timezone
 from model_utils import FieldTracker
 from model_utils.fields import MonitorField
 from simple_history.models import HistoricalRecords
-from simple_history.utils import bulk_create_with_history, bulk_update_with_history
+from simple_history.utils import (bulk_create_with_history,
+                                  bulk_update_with_history)
 
 import app
 import events
@@ -40,6 +38,7 @@ class Sources(models.TextChoices):
     MANGAUPDATES = "mangaupdates", "MangaUpdates"
     IGDB = "igdb", "Internet Game Database"
     OPENLIBRARY = "openlibrary", "Open Library"
+    GOOGLEBOOKS = "googlebooks", "Google Books"
     HARDCOVER = "hardcover", "Hardcover"
     COMICVINE = "comicvine", "Comic Vine"
     MANUAL = "manual", "Manual"
