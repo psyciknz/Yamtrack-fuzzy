@@ -8,28 +8,10 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
-from app.models import (
-    TV,
-    Anime,
-    Episode,
-    Game,
-    Item,
-    Manga,
-    MediaTypes,
-    Movie,
-    Season,
-    Sources,
-    Status,
-)
-from integrations.imports import (
-    anilist,
-    helpers,
-    hltb,
-    kitsu,
-    mal,
-    simkl,
-    yamtrack,
-)
+from app.models import (TV, Anime, Book, Episode, Game, Item, Manga,
+                        MediaTypes, Movie, Season, Sources, Status)
+from integrations.imports import (anilist, book_import, helpers, hltb, kitsu,
+                                  mal, simkl, yamtrack)
 from integrations.imports.trakt import TraktImporter, importer
 
 mock_path = Path(__file__).resolve().parent / "mock_data"
@@ -765,3 +747,25 @@ class HelpersTest(TestCase):
 
         schedule = CrontabSchedule.objects.first()
         self.assertEqual(schedule.day_of_week, "*/2")
+class ImportBooks(TestCase):
+    """Test importing book media from Book CSV."""
+
+    def setUp(self):
+        """Create user for the tests."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        with Path(mock_path / "import_books.csv").open("rb") as file:
+            self.import_results =book_import.importer(file, self.user, "new")
+
+    def test_import_counts(self):
+        """Test basic counts of imported media."""
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 4)
+
+    def test_historical_records(self):
+        """Test historical records creation during import."""
+        book = Book.objects.filter(user=self.user).first()
+        self.assertEqual(book.history.count(), 1)
+        self.assertEqual(
+            book.history.first().history_date,
+            datetime(2024, 2, 9, 10, 0, 0, tzinfo=UTC),
+        )
