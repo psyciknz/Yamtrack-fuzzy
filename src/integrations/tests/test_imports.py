@@ -773,7 +773,7 @@ class ImportBooks(TestCase):
             user=self.user,
             item__title="Warlock",
             ).first()
-        self.assertEqual(book.history.count(), 2)
+        self.assertEqual(book.history.count(), 1)
         self.assertEqual(
             book.history.first().history_date,
             datetime(2005, 7, 22, 0, 0, 0, tzinfo=UTC),
