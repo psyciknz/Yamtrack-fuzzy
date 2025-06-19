@@ -759,7 +759,7 @@ class ImportBooks(TestCase):
 
     def test_import_counts(self):
         """Test basic counts of imported media."""
-        self.assertEqual(Book.objects.filter(user=self.user).count(), 4)
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 5)
 
     def test_historical_records(self):
         """Test historical records creation during import."""
@@ -767,5 +767,14 @@ class ImportBooks(TestCase):
         self.assertEqual(book.history.count(), 1)
         self.assertEqual(
             book.history.first().history_date,
-            datetime(2024, 2, 9, 10, 0, 0, tzinfo=UTC),
+            datetime(2005, 4, 1, 0, 0, 0, tzinfo=UTC),
+        )
+        book = Book.objects.filter(
+            user=self.user,
+            item__title="Warlock",
+            ).first()
+        self.assertEqual(book.history.count(), 2)
+        self.assertEqual(
+            book.history.first().history_date,
+            datetime(2005, 7, 22, 0, 0, 0, tzinfo=UTC),
         )
