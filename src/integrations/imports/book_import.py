@@ -1,3 +1,4 @@
+import datetime
 import logging
 from collections import defaultdict
 from csv import DictReader
@@ -63,8 +64,9 @@ class BookImporter:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        fieldnames = ['isbn','providerid','provider','title','read_start','read_end','sourcee','media_id','progress','status']
+        fieldnames = ['isbn','providerid','provider','title','read_start','read_end','source','media_id','progress','status']
         reader = DictReader(decoded_file,fieldnames=fieldnames)
+        #reader = DictReader(decoded_file)
 
         for row in reader:
             try:
@@ -87,6 +89,9 @@ class BookImporter:
     def _process_row(self, row):
         """Process a single row from the CSV file."""
         media_type = MediaTypes.BOOK.value
+        
+        if "provider" in row and row["provider"] == 'provider':
+            return
 
         # Check if we should process this movie based on mode
         if not helpers.should_process_media(
@@ -119,6 +124,7 @@ class BookImporter:
 
         model = apps.get_model(app_label="app", model_name=media_type)
         instance = model(item=item)
+        
         if media_type != MediaTypes.EPISODE.value:  # episode has no user field
             instance.user = self.user
 
@@ -128,15 +134,22 @@ class BookImporter:
             instance=instance,
         )
 
-        if form.is_valid():
-            progressed_at = row.get("progressed_at")
-            if progressed_at:
-                form.instance._history_date = parse_datetime(progressed_at)
-            self.bulk_media[media_type].append(form.instance)
+        progressed_at = row.get("read_end")
+        if progressed_at:
+            instance._history_date = parse_datetime(progressed_at)
         else:
-            error_msg = f"{row['title']} ({media_type}): {form.errors.as_json()}"
-            self.warnings.append(error_msg)
-            logger.error(error_msg)
+            instance._history_date = datetime.datetime.now()
+           
+        self.bulk_media[media_type].append(instance)
+        # if form.is_valid():
+        #     progressed_at = row.get("end_date")
+        #     if progressed_at:
+        #         form.instance._history_date = parse_datetime(progressed_at)
+        #     self.bulk_media[media_type].append(form.instance)
+        # else:
+        #     error_msg = f"{row['title']} ({media_type}): {form.errors.as_json()}"
+        #     self.warnings.append(error_msg)
+        #     logger.error(error_msg)
 
     def _handle_missing_metadata(self, row, media_type):
         """Handle missing metadata by fetching from provider - 
