@@ -13,12 +13,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import (require_GET, require_http_methods,
+                                          require_POST)
 
 from app import helpers, history_processor
 from app import statistics as stats
 from app.forms import ManualItemForm, get_form_class
-from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
+from app.models import (TV, BasicMedia, Item, MediaTypes, Season, Sources,
+                        Status)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
@@ -766,6 +768,71 @@ def delete_history_record(request, media_type, history_id):
 @require_GET
 def statistics(request):
     """Return the statistics page."""
+    # Set default date range to last year
+    timeformat = "%Y-%m-%d"
+    today = timezone.localdate()
+    one_year_ago = today.replace(year=today.year - 1)
+
+    # Get date parameters with defaults
+    start_date_str = request.GET.get("start-date") or one_year_ago.strftime(timeformat)
+    end_date_str = request.GET.get("end-date") or today.strftime(timeformat)
+
+    if start_date_str == "all" and end_date_str == "all":
+        start_date = None
+        end_date = None
+    else:
+        start_date = parse_date(start_date_str)
+        end_date = parse_date(end_date_str)
+
+        if start_date and end_date:
+            # Convert to datetime with timezone awareness
+            start_date = timezone.make_aware(
+                datetime.combine(start_date, datetime.min.time()),
+            )
+
+            # End date should be end of day
+            end_date = timezone.make_aware(
+                datetime.combine(end_date, datetime.max.time()),
+            )
+
+    # Get all user media data in a single operation
+    user_media, media_count = stats.get_user_media(
+        request.user,
+        start_date,
+        end_date,
+    )
+
+    # Calculate all statistics from the retrieved data
+    media_type_distribution = stats.get_media_type_distribution(
+        media_count,
+    )
+    score_distribution, top_rated = stats.get_score_distribution(user_media)
+    status_distribution = stats.get_status_distribution(user_media)
+    status_pie_chart_data = stats.get_status_pie_chart_data(
+        status_distribution,
+    )
+    timeline = stats.get_timeline(user_media)
+
+    activity_data = stats.get_activity_data(request.user, start_date, end_date)
+
+    context = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "media_count": media_count,
+        "activity_data": activity_data,
+        "media_type_distribution": media_type_distribution,
+        "score_distribution": score_distribution,
+        "top_rated": top_rated,
+        "status_distribution": status_distribution,
+        "status_pie_chart_data": status_pie_chart_data,
+        "timeline": timeline,
+    }
+
+    return render(request, "app/statistics.html", context)
+
+@require_GET
+def history(request):
+    """Return the history page."""
     # Set default date range to last year
     timeformat = "%Y-%m-%d"
     today = timezone.localdate()
