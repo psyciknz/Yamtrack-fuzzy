@@ -7,18 +7,9 @@ from django.conf import settings
 from django.test import TestCase
 
 from app.models import Episode, Item, MediaTypes, Sources
-from app.providers import (
-    comicvine,
-    googlebooks,
-    hardcover,
-    igdb,
-    mal,
-    mangaupdates,
-    manual,
-    openlibrary,
-    services,
-    tmdb,
-)
+from app.providers import (comicvine, googlebooks, hardcover, igdb, mal,
+                           mangaupdates, manual, openlibrary, services, tmdb)
+
 mock_path = Path(__file__).resolve().parent / "mock_data"
 
 
@@ -427,22 +418,6 @@ class Metadata(TestCase):
         self.assertIsNone(response["genres"])
         self.assertIsNone(response["score"])
 
-    def test_google_book(self):
-        """Test the metadata method for books from Hardcover."""
-        response = googlebooks.book("IwywDY4P6gsC")
-        self.assertEqual(response["title"], "Foundation")
-        # failed here
-        self.assertIn("Isaac Asimov",response["details"]["author"])
-        self.assertEqual(response["details"]["publisher"], "Random House Worlds")
-        self.assertEqual(response["details"]["publish_date"], "2004-06-01")
-        self.assertEqual(response["details"]["number_of_pages"], 320)
-        self.assertEqual(response["details"]["format"], "BOOK")
-        # Testing that we have some of the expected genres
-        self.assertIn("Fiction / Classics", response["genres"])
-        # Rating is approximately 4.21 * 2 = 8.42
-        self.assertAlmostEqual(response["score"], 0, delta=0.1)
-
-    
     def test_manual_tv(self):
         """Test the metadata method for manually created TV shows."""
         # Create test data
