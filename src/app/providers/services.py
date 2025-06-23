@@ -191,8 +191,6 @@ def search(media_type, query, page, source=None):
     elif media_type == MediaTypes.BOOK.value:
         if source == Sources.OPENLIBRARY.value:
             response = openlibrary.search(query, page)
-        elif source == Sources.GOOGLEBOOKS.value:
-            response = googlebooks.search(query, page)
         else:
             response = hardcover.search(query, page)
     elif media_type == MediaTypes.COMIC.value:
