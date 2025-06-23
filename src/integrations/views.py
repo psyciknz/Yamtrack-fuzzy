@@ -235,7 +235,14 @@ def jellyfin_webhook(request, token):
         )
         return HttpResponse(status=401)
 
-    payload = json.loads(request.body)
+    # Attach User instance so history_user_id is populated
+    request.user = user
+    data = request.body
+    if not data:
+        logger.warning("Missing payload in Jellyfin webhook request")
+        return HttpResponse("Missing payload", status=400)
+
+    payload = json.loads(data)
     processor = jellyfin.JellyfinWebhookProcessor()
     processor.process_payload(payload, user)
     return HttpResponse(status=200)
@@ -255,14 +262,17 @@ def plex_webhook(request, token):
         )
         return HttpResponse(status=401)
 
+    # Attach User instance so history_user_id is populated
+    request.user = user
+
     # https://support.plex.tv/hc/en-us/articles/115002267687-Webhooks
     # As stated above, the payload is sent in JSON format inside a multipart
     # HTTP POST request. For the media.play and media.rate events, a second part of
     # the POST request contains a JPEG thumbnail for the media.
 
-    # Access payload data
     data = request.POST.get("payload")
     if not data:
+        logger.warning("Missing payload in Plex webhook request")
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
@@ -285,12 +295,15 @@ def emby_webhook(request, token):
         )
         return HttpResponse(status=401)
 
+    # Attach User instance so history_user_id is populated
+    request.user = user
+
     # The payload is sent in JSON format inside a multipart
     # HTTP POST request.
 
-    # Access payload data
     data = request.POST.get("data")
     if not data:
+        logger.warning("Missing payload in Emby webhook request")
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
