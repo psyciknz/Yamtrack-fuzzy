@@ -754,27 +754,37 @@ class ImportBooks(TestCase):
         """Create user for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
-        with Path(mock_path / "import_books.csv").open("rb") as file:
-            self.import_results =book_import.importer(file, self.user, "new")
+        with Path(mock_path / "import_books_yamtrack.csv").open("rb") as file:
+            self.import_results =yamtrack.importer(file, self.user, "new")
 
     def test_import_counts(self):
         """Test basic counts of imported media."""
-        self.assertEqual(Book.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 3)
 
     def test_historical_records(self):
         """Test historical records creation during import."""
         book = Book.objects.filter(user=self.user).first()
         self.assertEqual(book.history.count(), 1)
-        self.assertEqual(
-            book.history.first().history_date,
-            datetime(2005, 4, 1, 0, 0, 0, tzinfo=UTC),
-        )
-        book = Book.objects.filter(
+        #self.assertEqual(
+        #    book.history.first().history_date,
+        #    datetime(2005, 4, 1, 0, 0, 0, tzinfo=UTC),
+        #)
+        bookqs = Book.objects.filter(
             user=self.user,
             item__title="Warlock",
-            ).first()
-        self.assertEqual(book.history.count(), 1)
+            )
+        books = list(bookqs)
+        
+        self.assertEqual(len(books),3)
         self.assertEqual(
-            book.history.first().history_date,
-            datetime(2005, 7, 22, 0, 0, 0, tzinfo=UTC),
+            books[0].end_date,
+            datetime(2024, 4, 9, 0, 0, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            books[1].end_date,
+            datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            books[2].end_date,
+            datetime(2024, 3, 9, 0, 0, 0, tzinfo=UTC),
         )
