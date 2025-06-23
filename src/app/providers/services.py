@@ -9,8 +9,8 @@ from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
 from app.models import MediaTypes, Sources
-from app.providers import (comicvine, googlebooks, hardcover, igdb, mal,
-                           mangaupdates, manual, openlibrary, tmdb)
+from app.providers import (comicvine, hardcover, igdb, mal, mangaupdates,
+                           manual, openlibrary, tmdb)
 
 logger = logging.getLogger(__name__)
 
