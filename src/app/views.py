@@ -868,15 +868,6 @@ def history(request):
         end_date,
     )
 
-    # Calculate all statistics from the retrieved data
-    media_type_distribution = stats.get_media_type_distribution(
-        media_count,
-    )
-    score_distribution, top_rated = stats.get_score_distribution(user_media)
-    status_distribution = stats.get_status_distribution(user_media)
-    status_pie_chart_data = stats.get_status_pie_chart_data(
-        status_distribution,
-    )
     timeline = stats.get_timeline(user_media)
 
     activity_data = stats.get_activity_data(request.user, start_date, end_date)
@@ -886,12 +877,7 @@ def history(request):
         "end_date": end_date,
         "media_count": media_count,
         "activity_data": activity_data,
-        "media_type_distribution": media_type_distribution,
-        "score_distribution": score_distribution,
-        "top_rated": top_rated,
-        "status_distribution": status_distribution,
-        "status_pie_chart_data": status_pie_chart_data,
         "timeline": timeline,
     }
 
-    return render(request, "app/statistics.html", context)
+    return render(request, "app/history.html", context)

@@ -8,11 +8,7 @@ from collections import defaultdict
 from dateutil.relativedelta import relativedelta
 from django.apps import apps
 from django.db import models
-from django.db.models import (
-    Count,
-    Prefetch,
-    Q,
-)
+from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
