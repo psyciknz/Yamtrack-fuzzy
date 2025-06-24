@@ -10,8 +10,8 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import (TV, Anime, Book, Episode, Game, Item, Manga,
                         MediaTypes, Movie, Season, Sources, Status)
-from integrations.imports import (anilist, book_import, helpers, hltb, kitsu,
-                                  mal, simkl, yamtrack)
+from integrations.imports import (anilist, helpers, hltb, kitsu, mal, simkl,
+                                  yamtrack)
 from integrations.imports.trakt import TraktImporter, importer
 
 mock_path = Path(__file__).resolve().parent / "mock_data"
@@ -754,7 +754,7 @@ class ImportBooks(TestCase):
         """Create user for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
-        with Path(mock_path / "import_books_yamtrack.csv").open("rb") as file:
+        with Path(mock_path / "import_books_yamtrack2.csv").open("rb") as file:
             self.import_results =yamtrack.importer(file, self.user, "new")
 
     def test_import_counts(self):
