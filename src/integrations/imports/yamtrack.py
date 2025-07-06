@@ -197,10 +197,10 @@ class YamtrackImporter:
                     Sources.HARDCOVER.value,
                 )
                 row["title"] = metadata["results"][0]["title"]
-                logger.info(f"Added title from harcover: {row["title"]}")
+                logger.info(f"Added title from harcover: {row['title']}")
                 row["source"] = Sources.HARDCOVER.value
                 row["media_id"] = metadata["results"][0]["media_id"]
-                logger.info(f"Obtained media id harcover: {row["media_id"]}")
+                logger.info(f"Obtained media id harcover: {row['media_id']}")
                 
                 row["media_type"] = media_type
                 row["image"] = metadata["results"][0]["image"]
