@@ -9,6 +9,7 @@ from django.utils.dateparse import parse_datetime
 import app
 from app.models import MediaTypes, Sources
 from app.providers import services
+from app.templatetags import app_tags
 from integrations.imports import helpers
 from integrations.imports.helpers import (MediaImportError,
                                           MediaImportUnexpectedError)
@@ -66,6 +67,13 @@ class YamtrackImporter:
         for row in reader:
             try:
                 self._process_row(row)
+            except services.ProviderAPIError as error:
+                error_msg = (
+                    f"Error processing entry with ID {row['media_id']} "
+                    f"({app_tags.media_type_readable(row['media_type'])}): {error}"
+                )
+                self.warnings.append(error_msg)
+                continue
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
@@ -209,3 +217,4 @@ class YamtrackImporter:
                 f"Failed to fetch metadata for {row['media_id']}: {e!s}",
             )
             raise
+

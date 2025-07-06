@@ -323,7 +323,8 @@ def get_timeline(user_media):
         for media in queryset:
             local_start_date = timezone.localdate(media.start_date)
             local_end_date = timezone.localdate(media.end_date)
-            if local_start_date and local_end_date:
+
+            if media.start_date and media.end_date:
                 # add media to all months between start and end
                 current_date = local_start_date
                 while current_date <= local_end_date:
@@ -337,7 +338,7 @@ def get_timeline(user_media):
                     # Move to next month
                     current_date += relativedelta(months=1)
                     current_date = current_date.replace(day=1)
-            elif local_start_date:
+            elif media.start_date:
                 # If only start date, add to the start month
                 year = local_start_date.year
                 month = local_start_date.month
@@ -345,7 +346,7 @@ def get_timeline(user_media):
                 month_year = f"{month_name} {year}"
 
                 timeline[month_year].append(media)
-            elif local_end_date:
+            elif media.end_date:
                 # If only end date, add to the end month
                 year = local_end_date.year
                 month = local_end_date.month
@@ -370,16 +371,15 @@ def get_timeline(user_media):
     result = {}
     for month_year, media_list, _, _ in sorted_items:
         # Sort the media list using our custom sort key
-        result[month_year] = sorted(media_list, key=time_line_sort_key)
-
+        result[month_year] = sorted(media_list, key=time_line_sort_key, reverse=True)
     return result
 
 
 def time_line_sort_key(media):
     """Sort media items in the timeline."""
-    if media.start_date is not None:
-        return timezone.localdate(media.start_date)
-    return timezone.localdate(media.end_date)
+    if media.end_date is not None:
+        return timezone.localdate(media.end_date)
+    return timezone.localdate(media.start_date)
 
 
 def get_activity_data(user, start_date, end_date):

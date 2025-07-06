@@ -1495,9 +1495,6 @@
   .text-center {
     text-align: center;
   }
-  .text-justify {
-    text-align: justify;
-  }
   .text-left {
     text-align: left;
   }
@@ -2312,6 +2309,21 @@
           background-color: var(--color-gray-700);
         }
       }
+    }
+  }
+  .sm\:top-2 {
+    @media (width >= 40rem) {
+      top: calc(var(--spacing) * 2);
+    }
+  }
+  .sm\:right-2 {
+    @media (width >= 40rem) {
+      right: calc(var(--spacing) * 2);
+    }
+  }
+  .sm\:left-auto {
+    @media (width >= 40rem) {
+      left: auto;
     }
   }
   .sm\:col-span-2 {

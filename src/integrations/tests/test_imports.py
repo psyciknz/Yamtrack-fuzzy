@@ -10,8 +10,8 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import (TV, Anime, Book, Episode, Game, Item, Manga,
                         MediaTypes, Movie, Season, Sources, Status)
-from integrations.imports import (anilist, book_import, helpers, hltb, kitsu,
-                                  mal, simkl, yamtrack)
+from integrations.imports import (anilist, helpers, hltb, kitsu, mal, simkl,
+                                  yamtrack)
 from integrations.imports.trakt import TraktImporter, importer
 
 mock_path = Path(__file__).resolve().parent / "mock_data"
@@ -176,6 +176,60 @@ class ImportYamtrack(TestCase):
             tv.history.first().history_date,
             datetime(2024, 2, 9, 12, 0, 0, tzinfo=UTC),
         )
+
+    def test_missing_metadata_handling(self):
+        """Test _handle_missing_metadata method directly."""
+        # Create test rows for different media types
+        test_rows = [
+            # TV Show
+            {
+                "media_id": "1668",
+                "source": "tmdb",
+                "media_type": "tv",
+                "title": "",
+                "image": "",
+                "season_number": "",
+                "episode_number": "",
+            },
+            # Season
+            {
+                "media_id": "1668",
+                "source": "tmdb",
+                "media_type": "season",
+                "title": "",
+                "image": "",
+                "season_number": "2",
+                "episode_number": "",
+            },
+            # Episode
+            {
+                "media_id": "1668",
+                "source": "tmdb",
+                "media_type": "episode",
+                "title": "",
+                "image": "",
+                "season_number": "2",
+                "episode_number": "5",
+            },
+        ]
+
+        importer = yamtrack.YamtrackImporter(None, self.user, "new")
+
+        for row in test_rows:
+            # Make copies of original rows to verify they're modified
+            original_row = row.copy()
+
+            # Call the method directly
+            importer._handle_missing_metadata(
+                row,
+                row["media_type"],
+                row["season_number"],
+                row["episode_number"],
+            )
+
+            # Verify the row was modified as expected
+            self.assertNotEqual(row["title"], original_row["title"])
+            self.assertNotEqual(row["image"], original_row["image"])
 
 
 class ImportHowLongToBeat(TestCase):
@@ -754,7 +808,7 @@ class ImportBooks(TestCase):
         """Create user for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
-        with Path(mock_path / "import_books_yamtrack.csv").open("rb") as file:
+        with Path(mock_path / "import_books_yamtrack2.csv").open("rb") as file:
             self.import_results =yamtrack.importer(file, self.user, "new")
 
     def test_import_counts(self):

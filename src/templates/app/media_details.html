@@ -137,7 +137,7 @@
              x-init="$nextTick(() => checkClamp())">
           <p x-ref="synopsisText"
              :class="isExpanded ? '' : '{% if media.media_type == MediaTypes.SEASON.value %}line-clamp-4{% else %}line-clamp-5{% endif %}'"
-             class="text-gray-300 text-justify text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
+             class="text-gray-300 text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
                   class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
@@ -159,7 +159,7 @@
                  stroke-linecap="round"
                  stroke-linejoin="round"
                  class="w-5 h-5 mr-2 text-yellow-400 flex-shrink-0 mt-0.5">
-              <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2V8Z"></path>
+              <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path>
               <path d="M15 3v4a2 2 0 0 0 2 2h4"></path>
             </svg>
             <div class="font-medium text-gray-400 mb-1">YOUR NOTES</div>
@@ -784,12 +784,12 @@
                       </div>
                     </div>
                     <div class="{% if episode.history %}md:h-[calc(2*1.5rem)]{% else %}md:h-[calc(3*1.5rem)]{% endif %} md:overflow-y-auto px-4">
-                      <p class="text-sm text-gray-300 leading-relaxed text-justify text-pretty">{{ episode.overview }}</p>
+                      <p class="text-sm text-gray-300 leading-relaxed text-pretty">{{ episode.overview }}</p>
                     </div>
                   </div>
                   {% if episode.history %}
                     <p class="text-xs text-gray-400 mt-2 px-4">
-                      Last watched: {{ episode.history.0.end_date|date_tracker_format }}
+                      Last watched: {{ episode.history.0.end_date|date_tracker_format|default_if_none:"No date provided" }}
                       {% if episode.history|length > 1 %}• Watched {{ episode.history|length }} times{% endif %}
                     </p>
                   {% endif %}
