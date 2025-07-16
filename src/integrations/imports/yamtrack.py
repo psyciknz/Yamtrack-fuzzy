@@ -187,10 +187,10 @@ class YamtrackImporter:
                         media_type_config.get_default_source_name(media_type)
                     )
                     row["title"] = metadata["results"][0]["title"]
-                    logger.info(f"Added title from harcover: {row['title']}")
+                    logger.info(f"Added title from {media_type_config.get_default_source_name(media_type)}: {row['title']}")
                     row["source"] = metadata["results"][0]["source"]
                     row["media_id"] = metadata["results"][0]["media_id"]
-                    logger.info(f"Obtained media id harcover: {row['media_id']}")
+                    logger.info(f"Obtained media id : {row['media_id']}")
                     
                     row["media_type"] = media_type
                     row["image"] = metadata["results"][0]["image"]

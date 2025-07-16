@@ -801,19 +801,21 @@ class HelpersTest(TestCase):
 
         schedule = CrontabSchedule.objects.first()
         self.assertEqual(schedule.day_of_week, "*/2")
-class ImportBooks(TestCase):
-    """Test importing book media from Book CSV."""
+class ImportYamtrackPartials(TestCase):
+    """Test importing yamtrack media with no ID."""
 
     def setUp(self):
         """Create user for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
-        with Path(mock_path / "import_books_yamtrack.csv").open("rb") as file:
+        with Path(mock_path / "import_yamtrack_partials.csv").open("rb") as file:
             self.import_results =yamtrack.importer(file, self.user, "new")
 
     def test_import_counts(self):
         """Test basic counts of imported media."""
         self.assertEqual(Book.objects.filter(user=self.user).count(), 3)
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
+        
 
     def test_historical_records(self):
         """Test historical records creation during import."""
@@ -826,17 +828,17 @@ class ImportBooks(TestCase):
         bookqs = Book.objects.filter(
             user=self.user,
             item__title="Warlock",
-            )
+            ).order_by("-end_date")
         books = list(bookqs)
         
         self.assertEqual(len(books),3)
         self.assertEqual(
             books[0].end_date,
-            datetime(2024, 4, 9, 0, 0, 0, tzinfo=UTC),
+            datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC),
         )
         self.assertEqual(
             books[1].end_date,
-            datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC),
+            datetime(2024, 4, 9, 0, 0, 0, tzinfo=UTC),
         )
         self.assertEqual(
             books[2].end_date,
