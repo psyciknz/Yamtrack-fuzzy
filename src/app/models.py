@@ -312,14 +312,10 @@ class MediaManager(models.Manager):
         # Aggregate status (most recent status)
         display_media.aggregated_status = display_media.status  # Already the most recent due to row_number=1
         
-        # Aggregate rating (newest non-blank rating, fallback to newest rating)
-        ratings = [(entry.score, entry.created_at) for entry in all_media_entries if entry.score is not None]
-        if ratings:
-            # Sort by created_at desc, then by score desc to prioritize newer ratings
-            ratings.sort(key=lambda x: (x[1], x[0]), reverse=True)
-            display_media.aggregated_score = ratings[0][0]
-        else:
-            display_media.aggregated_score = None
+        # Aggregate rating (use the score from the most recent entry)
+        # The display_media is already the most recent entry due to row_number=1
+        # So we should use its score as the "latest" rating
+        display_media.aggregated_score = display_media.score
         
         # Store the number of repeats for display
         display_media.repeats = len(all_media_entries)
