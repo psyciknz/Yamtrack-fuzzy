@@ -256,8 +256,73 @@ class MediaManager(models.Manager):
         queryset = self._apply_prefetch_related(queryset, media_type)
 
         if sort_filter:
-            return self._sort_media_list(queryset, sort_filter, media_type)
+            queryset = self._sort_media_list(queryset, sort_filter, media_type)
+        
+        # Aggregate data from duplicate entries
+        queryset = self._aggregate_duplicate_data(queryset, user, media_type)
+        
         return queryset
+
+    def _aggregate_duplicate_data(self, queryset, user, media_type):
+        """Aggregate data from duplicate entries for each item."""
+        # Get all media entries for the user to aggregate data
+        model = apps.get_model(app_label="app", model_name=media_type)
+        all_media = model.objects.filter(user=user.id).select_related("item")
+        
+        # Group media by item_id
+        media_by_item = {}
+        for media in all_media:
+            item_id = media.item.id
+            if item_id not in media_by_item:
+                media_by_item[item_id] = []
+            media_by_item[item_id].append(media)
+        
+        # Aggregate data for each item in the queryset
+        for media in queryset:
+            item_id = media.item.id
+            if item_id in media_by_item and len(media_by_item[item_id]) > 1:
+                # Aggregate data from all duplicates
+                self._aggregate_item_data(media, media_by_item[item_id])
+        
+        return queryset
+
+    def _aggregate_item_data(self, display_media, all_media_entries):
+        """Aggregate data from multiple media entries for the same item."""
+        # Sort by created_at to get chronological order
+        sorted_entries = sorted(all_media_entries, key=lambda x: x.created_at)
+        
+        # Aggregate progress (sum all progress values)
+        total_progress = sum(entry.progress for entry in all_media_entries)
+        display_media.aggregated_progress = total_progress
+        
+        # Aggregate start date (earliest start date)
+        start_dates = [entry.start_date for entry in all_media_entries if entry.start_date]
+        if start_dates:
+            display_media.aggregated_start_date = min(start_dates)
+        else:
+            display_media.aggregated_start_date = None
+        
+        # Aggregate end date (latest end date)
+        end_dates = [entry.end_date for entry in all_media_entries if entry.end_date]
+        if end_dates:
+            display_media.aggregated_end_date = max(end_dates)
+        else:
+            display_media.aggregated_end_date = None
+        
+        # Aggregate status (most recent status)
+        display_media.aggregated_status = display_media.status  # Already the most recent due to row_number=1
+        
+        # Aggregate rating (newest non-blank rating, fallback to newest rating)
+        ratings = [(entry.score, entry.created_at) for entry in all_media_entries if entry.score is not None]
+        if ratings:
+            # Sort by created_at desc, then by score desc to prioritize newer ratings
+            ratings.sort(key=lambda x: (x[1], x[0]), reverse=True)
+            display_media.aggregated_score = ratings[0][0]
+        else:
+            display_media.aggregated_score = None
+        
+        # Store the number of repeats for display
+        display_media.repeats = len(all_media_entries)
 
     def _apply_prefetch_related(self, queryset, media_type):
         """Apply appropriate prefetch_related based on media type."""
@@ -836,6 +901,16 @@ class Media(models.Model):
     @property
     def formatted_progress(self):
         """Return the progress of the media in a formatted string."""
+        return str(self.progress)
+
+    @property
+    def formatted_aggregated_progress(self):
+        """Return formatted aggregated progress string."""
+        if hasattr(self, 'aggregated_progress') and self.aggregated_progress is not None:
+            # Format based on media type
+            if hasattr(self, 'item') and self.item.media_type == MediaTypes.GAME.value:
+                return app.helpers.minutes_to_hhmm(self.aggregated_progress)
+            return str(self.aggregated_progress)
         return str(self.progress)
 
     def increase_progress(self):

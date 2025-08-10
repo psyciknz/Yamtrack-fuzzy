@@ -66,8 +66,33 @@
           </div>
         {% endif %}
       </div>
+      
+      {# Removed date range display to reduce clutter #}
     </td>
-    {% if media.score is not None %}
+    {% if media.aggregated_score is not None %}
+      <td class="p-2 text-center">
+        <div class="flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               width="24"
+               height="24"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="2"
+               stroke-linecap="round"
+               stroke-linejoin="round"
+               class="w-4 h-4 text-yellow-400 mr-1 fill-current">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <span class="text-white -mt-[3px]">{{ media.aggregated_score }}</span>
+        </div>
+        {% if media.repeats > 1 %}
+          <div class="text-xs text-gray-400 mt-1">
+            <span class="text-indigo-400">Aggregated</span>
+          </div>
+        {% endif %}
+      </td>
+    {% elif media.score is not None %}
       <td class="p-2 text-center">
         <div class="flex items-center justify-center">
           <svg xmlns="http://www.w3.org/2000/svg"
@@ -97,7 +122,7 @@
                stroke-width="2"
                stroke-linecap="round"
                stroke-linejoin="round"
-               class="w-4 h-4 text-gray-400 mr-1 fill-current">
+               class="w-4 h-4 text-gray-400 mr-1">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
           </svg>
         </div>
@@ -107,15 +132,45 @@
     {# Progress field #}
     {% if media_type != MediaTypes.MOVIE.value %}
       <td class="p-2 text-center">
-        {{ media.formatted_progress }}
-        {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
+        {% if media.aggregated_progress is not None %}
+          <div class="font-medium">{{ media.formatted_aggregated_progress }}</div>
+          {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
+          {% if media.repeats > 1 %}
+            <div class="text-xs text-indigo-400 mt-1">
+              <span>Total ({{ media.repeats }} repeats)</span>
+            </div>
+          {% endif %}
+        {% else %}
+          {{ media.formatted_progress }}
+          {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
+        {% endif %}
       </td>
       {% if media_type == MediaTypes.TV.value %}<td class="p-2 text-center">{{ media.last_watched }}</td>{% endif %}
     {% endif %}
 
-    <td class="p-2 text-center">{{ media.status|media_status_readable }}</td>
+    <td class="p-2 text-center">
+      {% if media.aggregated_status %}
+        <div class="font-medium">{{ media.aggregated_status|media_status_readable }}</div>
+        {% if media.repeats > 1 %}
+          <div class="text-xs text-indigo-400 mt-1">
+            <span>Latest</span>
+          </div>
+        {% endif %}
+      {% else %}
+        {{ media.status|media_status_readable }}
+      {% endif %}
+    </td>
 
-    {% if media.start_date %}
+    {% if media.aggregated_start_date %}
+      <td class="p-2 text-center">
+        <div class="font-medium">{{ media.aggregated_start_date|date:"SHORT_DATE_FORMAT" }}</div>
+        {% if media.repeats > 1 %}
+          <div class="text-xs text-indigo-400 mt-1">
+            <span>Earliest</span>
+          </div>
+        {% endif %}
+      </td>
+    {% elif media.start_date %}
       <td class="p-2 text-center">{{ media.start_date|date:"SHORT_DATE_FORMAT" }}</td>
     {% else %}
       <td class="p-2 text-center">
@@ -123,7 +178,16 @@
       </td>
     {% endif %}
 
-    {% if media.end_date %}
+    {% if media.aggregated_end_date %}
+      <td class="p-2 text-center">
+        <div class="font-medium">{{ media.aggregated_end_date|date:"SHORT_DATE_FORMAT" }}</div>
+        {% if media.repeats > 1 %}
+          <div class="text-xs text-indigo-400 mt-1">
+            <span>Latest</span>
+          </div>
+        {% endif %}
+      </td>
+    {% elif media.end_date %}
       <td class="p-2 text-center">{{ media.end_date|date:"SHORT_DATE_FORMAT" }}</td>
     {% else %}
       <td class="p-2 text-center">
