@@ -230,36 +230,60 @@ class MediaManager(models.Manager):
         return [f"historical{media_type}" for media_type in MediaTypes.values]
 
     def get_media_list(self, user, media_type, status_filter, sort_filter, search=None):
-        """Get media list based on filters, sorting and search."""
+        """Get a media list by type with filtering and sorting."""
         model = apps.get_model(app_label="app", model_name=media_type)
+        
+        # Build base queryset
         queryset = model.objects.filter(user=user.id)
-
+        
+        # Apply status filter
         if status_filter != users.models.MediaStatusChoices.ALL:
             queryset = queryset.filter(status=status_filter)
-
+        
+        # Apply search filter
         if search:
-            queryset = queryset.filter(item__title__icontains=search)
-
-        queryset = queryset.annotate(
-            repeats=Window(
-                expression=Count("id"),
-                partition_by=[F("item")],
-            ),
-            row_number=Window(
-                expression=RowNumber(),
-                partition_by=[F("item")],
-                order_by=F("created_at").desc(),
-            ),
-        ).filter(row_number=1)
+            queryset = queryset.filter(
+                models.Q(item__title__icontains=search)
+                | models.Q(item__media_id__icontains=search)
+            )
+        
+        # Handle duplicate entries by selecting the most recent record for each item
+        if sort_filter == "progress":
+            # For progress sorting, select the record with highest individual progress
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("progress").desc(),
+                ),
+            ).filter(row_number=1)
+        else:
+            # For non-progress sorting, select the most recent record
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("created_at").desc(),
+                ),
+            ).filter(row_number=1)
 
         queryset = queryset.select_related("item")
         queryset = self._apply_prefetch_related(queryset, media_type)
-
+        
+        # Aggregate data from duplicate entries FIRST
+        queryset = self._aggregate_duplicate_data(queryset, user, media_type)
+        
+        # Apply sorting AFTER aggregation
         if sort_filter:
             queryset = self._sort_media_list(queryset, sort_filter, media_type)
-        
-        # Aggregate data from duplicate entries
-        queryset = self._aggregate_duplicate_data(queryset, user, media_type)
         
         return queryset
 
@@ -467,6 +491,17 @@ class MediaManager(models.Manager):
 
     def _sort_generic_media_list(self, queryset, sort_filter):
         """Apply generic sorting logic for all media types."""
+        # Handle progress sorting specially to use aggregated progress
+        if sort_filter == "progress":
+            # Since we're now sorting after aggregation, we can use the aggregated_progress attribute
+            # Convert to list for Python-based sorting since aggregated_progress is a Python attribute
+            media_list = list(queryset)
+            return sorted(
+                media_list,
+                key=lambda x: (getattr(x, 'aggregated_progress', x.progress), x.item.title.lower()),
+                reverse=True
+            )
+        
         # Handle sorting by date fields with special null handling
         if sort_filter in ("start_date", "end_date"):
             # For start_date, sort ascending (earliest first)
