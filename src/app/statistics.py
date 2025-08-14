@@ -661,7 +661,7 @@ def get_top_played_media(user_media, start_date, end_date):
                                     season_metadata_cache[season.item.season_number] = season_metadata
                                     
                                     # Log season metadata for debugging
-                                    logger.info(f"Season {season.item.season_number} metadata for {media.item.title}: {season_metadata}")
+                                    logger.debug(f"Season {season.item.season_number} metadata for {media.item.title}: {season_metadata}")
                                 except Exception as e:
                                     logger.warning(f"Failed to get season {season.item.season_number} metadata for {media.item.title}: {e}")
                                     season_metadata_cache[season.item.season_number] = None
@@ -683,15 +683,12 @@ def get_top_played_media(user_media, start_date, end_date):
                                     if season_metadata and season_metadata.get("details", {}).get("runtime"):
                                         # Parse the runtime string (e.g., "45m", "1h 30m")
                                         runtime_str = season_metadata["details"]["runtime"]
-                                        logger.info(f"TV episode runtime string: '{runtime_str}' for {media.item.title} S{season.item.season_number}")
                                         episode_minutes = parse_runtime_to_minutes(runtime_str)
-                                        logger.info(f"Parsed episode minutes: {episode_minutes}")
                                         if episode_minutes:
                                             total_time_minutes += episode_minutes
-                                            logger.info(f"Added {episode_minutes} minutes, total now: {total_time_minutes}")
                                         else:
                                             # Fallback: assume 45 minutes per episode for TV
-                                            logger.warning(f"Failed to parse runtime '{runtime_str}', using fallback 45 minutes")
+                                            logger.warning(f"Failed to parse runtime '{runtime_str}' for {media.item.title} S{season.item.season_number}, using fallback 45 minutes")
                                             total_time_minutes += 45
                                     else:
                                         # Fallback: assume 45 minutes per episode for TV
@@ -717,20 +714,18 @@ def get_top_played_media(user_media, start_date, end_date):
                                 media.item.source,
                             )
                             # Debug logging to see what we're getting
-                            logger.info(f"Movie metadata for {media.item.title}: {media_metadata}")
+                            logger.debug(f"Movie metadata for {media.item.title}: {media_metadata}")
                             
                             if media_metadata and media_metadata.get("details", {}).get("runtime"):
                                 # Parse the runtime string (e.g., "2h 15m")
                                 runtime_str = media_metadata["details"]["runtime"]
-                                logger.info(f"Runtime string: '{runtime_str}'")
+                                logger.info(f"Movie '{media.item.title}': runtime '{runtime_str}' -> {parse_runtime_to_minutes(runtime_str)} minutes")
                                 movie_minutes = parse_runtime_to_minutes(runtime_str)
-                                logger.info(f"Parsed minutes: {movie_minutes}")
                                 if movie_minutes:
                                     total_time_minutes += movie_minutes
-                                    logger.info(f"Added {movie_minutes} minutes, total now: {total_time_minutes}")
                                 else:
                                     # Fallback: assume 120 minutes per movie
-                                    logger.warning(f"Failed to parse runtime '{runtime_str}', using fallback 120 minutes")
+                                    logger.warning(f"Failed to parse runtime '{runtime_str}' for {media.item.title}, using fallback 120 minutes")
                                     total_time_minutes += 120
                             else:
                                 # Fallback: assume 120 minutes per movie
@@ -750,24 +745,22 @@ def get_top_played_media(user_media, start_date, end_date):
                             media.item.source,
                         )
                         # Debug logging to see what we're getting
-                        logger.info(f"Movie metadata (all time) for {media.item.title}: {media_metadata}")
+                        logger.debug(f"Movie metadata (all time) for {media.item.title}: {media_metadata}")
                         
                         if media_metadata and media_metadata.get("details", {}).get("runtime"):
                             # Parse the runtime string (e.g., "2h 15m")
                             runtime_str = media_metadata["details"]["runtime"]
-                            logger.info(f"Runtime string (all time): '{runtime_str}'")
+                            logger.info(f"Movie '{media.item.title}' (all time): runtime '{runtime_str}' -> {parse_runtime_to_minutes(runtime_str)} minutes")
                             movie_minutes = parse_runtime_to_minutes(runtime_str)
-                            logger.info(f"Parsed minutes (all time): {movie_minutes}")
                             if movie_minutes:
                                 total_time_minutes += movie_minutes
-                                logger.info(f"Added {movie_minutes} minutes (all time), total now: {total_time_minutes}")
                             else:
                                 # Fallback: assume 120 minutes per movie
-                                logger.warning(f"Failed to parse runtime '{runtime_str}' (all time), using fallback 120 minutes")
+                                logger.warning(f"Failed to parse runtime '{runtime_str}' for {media.item.title} (all time), using fallback 120 minutes")
                                 total_time_minutes += 120
                         else:
                             # Fallback: assume 120 minutes per movie
-                            logger.warning(f"No runtime in metadata (all time) for {media.item.title}, using fallback 120 minutes")
+                            logger.warning(f"No runtime in metadata for {media.item.title} (all time), using fallback 120 minutes")
                             total_time_minutes += 120
                     except Exception as e:
                         # Log the error for debugging
