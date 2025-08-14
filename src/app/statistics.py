@@ -656,9 +656,8 @@ def get_top_played_media(user_media, start_date, end_date):
                                 if episode_in_range:
                                     episode_count += 1
                                     
-                                    # Try to get episode runtime from season metadata first
+                                    # Get season metadata to access runtime information
                                     try:
-                                        # Get season metadata which should have episode runtime info
                                         season_metadata = providers.services.get_media_metadata(
                                             "season",
                                             media.item.media_id,
@@ -667,22 +666,11 @@ def get_top_played_media(user_media, start_date, end_date):
                                         )
                                         
                                         if season_metadata and season_metadata.get("details", {}).get("runtime"):
-                                            # Convert readable duration back to minutes
+                                            # Parse the runtime string (e.g., "45m", "1h 30m")
                                             runtime_str = season_metadata["details"]["runtime"]
-                                            if "h" in runtime_str and "m" in runtime_str:
-                                                # Format like "45m" or "1h 30m"
-                                                parts = runtime_str.split()
-                                                if len(parts) == 2:  # "1h 30m"
-                                                    hours = int(parts[0].replace("h", ""))
-                                                    minutes = int(parts[1].replace("m", ""))
-                                                    total_time_minutes += hours * 60 + minutes
-                                                elif len(parts) == 1:  # "45m" or "1h"
-                                                    if "h" in parts[0]:
-                                                        hours = int(parts[0].replace("h", ""))
-                                                        total_time_minutes += hours * 60
-                                                    else:
-                                                        minutes = int(parts[0].replace("m", ""))
-                                                        total_time_minutes += minutes
+                                            episode_minutes = parse_runtime_to_minutes(runtime_str)
+                                            if episode_minutes:
+                                                total_time_minutes += episode_minutes
                                             else:
                                                 # Fallback: assume 45 minutes per episode for TV
                                                 total_time_minutes += 45
@@ -712,22 +700,11 @@ def get_top_played_media(user_media, start_date, end_date):
                                 media.item.source,
                             )
                             if media_metadata and media_metadata.get("runtime"):
-                                # Convert readable duration back to minutes
+                                # Parse the runtime string (e.g., "2h 15m")
                                 runtime_str = media_metadata["runtime"]
-                                if "h" in runtime_str and "m" in runtime_str:
-                                    # Format like "2h 15m"
-                                    parts = runtime_str.split()
-                                    if len(parts) == 2:  # "2h 15m"
-                                        hours = int(parts[0].replace("h", ""))
-                                        minutes = int(parts[1].replace("m", ""))
-                                        total_time_minutes += hours * 60 + minutes
-                                    elif len(parts) == 1:  # "2h" or "15m"
-                                        if "h" in parts[0]:
-                                            hours = int(parts[0].replace("h", ""))
-                                            total_time_minutes += hours * 60
-                                        else:
-                                            minutes = int(parts[0].replace("m", ""))
-                                            total_time_minutes += minutes
+                                movie_minutes = parse_runtime_to_minutes(runtime_str)
+                                if movie_minutes:
+                                    total_time_minutes += movie_minutes
                                 else:
                                     # Fallback: assume 120 minutes per movie
                                     total_time_minutes += 120
@@ -746,22 +723,11 @@ def get_top_played_media(user_media, start_date, end_date):
                             media.item.source,
                         )
                         if media_metadata and media_metadata.get("runtime"):
-                            # Convert readable duration back to minutes
+                            # Parse the runtime string (e.g., "2h 15m")
                             runtime_str = media_metadata["runtime"]
-                            if "h" in runtime_str and "m" in runtime_str:
-                                # Format like "2h 15m"
-                                parts = runtime_str.split()
-                                if len(parts) == 2:  # "2h 15m"
-                                    hours = int(parts[0].replace("h", ""))
-                                    minutes = int(parts[1].replace("m", ""))
-                                    total_time_minutes += hours * 60 + minutes
-                                elif len(parts) == 1:  # "2h" or "15m"
-                                    if "h" in parts[0]:
-                                        hours = int(parts[0].replace("h", ""))
-                                        total_time_minutes += hours * 60
-                                    else:
-                                        minutes = int(parts[0].replace("m", ""))
-                                        total_time_minutes += minutes
+                            movie_minutes = parse_runtime_to_minutes(runtime_str)
+                            if movie_minutes:
+                                total_time_minutes += movie_minutes
                             else:
                                 # Fallback: assume 120 minutes per movie
                                 total_time_minutes += 120
@@ -791,3 +757,32 @@ def get_top_played_media(user_media, start_date, end_date):
         top_played[normalized_type] = media_with_progress[:10]
     
     return top_played
+
+
+def parse_runtime_to_minutes(runtime_str):
+    """Parse runtime string (e.g., '45m', '1h 30m', '2h') to total minutes."""
+    if not runtime_str:
+        return None
+    
+    try:
+        if "h" in runtime_str and "m" in runtime_str:
+            # Format like "1h 30m" or "2h 15m"
+            parts = runtime_str.split()
+            if len(parts) == 2:  # "1h 30m"
+                hours = int(parts[0].replace("h", ""))
+                minutes = int(parts[1].replace("m", ""))
+                return hours * 60 + minutes
+            else:
+                return None
+        elif "h" in runtime_str:
+            # Format like "2h"
+            hours = int(runtime_str.replace("h", ""))
+            return hours * 60
+        elif "m" in runtime_str:
+            # Format like "45m"
+            minutes = int(runtime_str.replace("m", ""))
+            return minutes
+        else:
+            return None
+    except (ValueError, AttributeError):
+        return None
