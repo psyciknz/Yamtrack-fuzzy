@@ -461,7 +461,7 @@
     <!-- Top Movies Section -->
     {% if top_played.movie %}
       <div class="bg-[#2a2f35] rounded-lg p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Top Movies</h2>
+        <h2 class="text-xl font-semibold mb-4">Top Movies - {{ start_date|format_date_range_display:end_date }}</h2>
         <div class="media-grid">
           {% for item in top_played.movie %}
             <div class="{% if secondary_color %}bg-[#39404b]{% else %}bg-[#2a2f35]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
@@ -536,7 +536,7 @@
     <!-- Top TV Shows Section -->
     {% if top_played.tv %}
       <div class="bg-[#2a2f35] rounded-lg p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Top TV Shows</h2>
+        <h2 class="text-xl font-semibold mb-4">Top TV Shows - {{ start_date|format_date_range_display:end_date }}</h2>
         <div class="media-grid">
           {% for item in top_played.tv %}
             <div class="{% if secondary_color %}bg-[#39404b]{% else %}bg-[#2a2f35]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
@@ -611,7 +611,7 @@
     <!-- Top Games Section -->
     {% if top_played.game %}
       <div class="bg-[#2a2f35] rounded-lg p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Top Games</h2>
+        <h2 class="text-xl font-semibold mb-4">Top Games - {{ start_date|format_date_range_display:end_date }}</h2>
         <div class="media-grid">
           {% for item in top_played.game %}
             <div class="{% if secondary_color %}bg-[#39404b]{% else %}bg-[#2a2f35]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
