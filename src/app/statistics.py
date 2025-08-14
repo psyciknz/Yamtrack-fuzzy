@@ -659,9 +659,6 @@ def get_top_played_media(user_media, start_date, end_date):
                                         [season.item.season_number]  # Note: season_numbers is a list
                                     )
                                     season_metadata_cache[season.item.season_number] = season_metadata
-                                    
-                                    # Log season metadata for debugging
-                                    logger.debug(f"Season {season.item.season_number} metadata for {media.item.title}: {season_metadata}")
                                 except Exception as e:
                                     logger.warning(f"Failed to get season {season.item.season_number} metadata for {media.item.title}: {e}")
                                     season_metadata_cache[season.item.season_number] = None
@@ -713,8 +710,6 @@ def get_top_played_media(user_media, start_date, end_date):
                                 media.item.media_id,
                                 media.item.source,
                             )
-                            # Debug logging to see what we're getting
-                            logger.debug(f"Movie metadata for {media.item.title}: {media_metadata}")
                             
                             if media_metadata and media_metadata.get("details", {}).get("runtime"):
                                 # Parse the runtime string (e.g., "2h 15m")
@@ -744,8 +739,6 @@ def get_top_played_media(user_media, start_date, end_date):
                             media.item.media_id,
                             media.item.source,
                         )
-                        # Debug logging to see what we're getting
-                        logger.debug(f"Movie metadata (all time) for {media.item.title}: {media_metadata}")
                         
                         if media_metadata and media_metadata.get("details", {}).get("runtime"):
                             # Parse the runtime string (e.g., "2h 15m")
