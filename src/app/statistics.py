@@ -14,7 +14,7 @@ from django.db.models import (
 )
 from django.utils import timezone
 
-from app import media_type_config
+from app import media_type_config, providers
 from app.models import TV, BasicMedia, Episode, MediaManager, MediaTypes, Season, Status
 from app.templatetags import app_tags
 
@@ -608,3 +608,128 @@ def calculate_streaks(date_counts, end_date):
     longest_streak = max(longest_streak, streak_count)
 
     return current_streak, longest_streak
+
+
+def get_top_played_media(user_media, start_date, end_date):
+    """Get top played media by total time spent within date range.
+    
+    Returns a dictionary with media types as keys and lists of top media items.
+    Each media item includes total_time_minutes and formatted_duration.
+    """
+    from app.helpers import minutes_to_hhmm
+    
+    top_played = {}
+    
+    # Define the media types we want to show
+    target_media_types = ['movie', 'tv', 'game']
+    
+    for media_type, media_list in user_media.items():
+        # Normalize media type to match our target types
+        normalized_type = media_type.lower()
+        if normalized_type not in target_media_types:
+            continue
+            
+        if not media_list.exists():
+            continue
+            
+        # Get media items with their progress and metadata
+        media_with_progress = []
+        
+        for media in media_list:
+            total_time_minutes = 0
+            
+            if normalized_type == "tv":
+                # For TV shows, sum up episode progress and runtime
+                if hasattr(media, 'seasons'):
+                    for season in media.seasons.all():
+                        if hasattr(season, 'episodes'):
+                            for episode in season.episodes.all():
+                                if episode.end_date and start_date and end_date:
+                                    if start_date <= episode.end_date <= end_date:
+                                        # Get episode runtime from metadata
+                                        try:
+                                            episode_metadata = providers.services.get_media_metadata(
+                                                "episode",
+                                                episode.item.media_id,
+                                                episode.item.source,
+                                            )
+                                            if episode_metadata and episode_metadata.get("runtime"):
+                                                total_time_minutes += episode_metadata["runtime"]
+                                            else:
+                                                # Fallback to episode count if no runtime (count as 1 episode)
+                                                total_time_minutes += 1
+                                        except Exception:
+                                            # Fallback to episode count if metadata fetch fails
+                                            total_time_minutes += 1
+                                elif not start_date and not end_date:
+                                    # All time - include all episodes
+                                    try:
+                                        episode_metadata = providers.services.get_media_metadata(
+                                            "episode",
+                                            episode.item.media_id,
+                                            episode.item.source,
+                                        )
+                                        if episode_metadata and episode_metadata.get("runtime"):
+                                            total_time_minutes += episode_metadata["runtime"]
+                                        else:
+                                            total_time_minutes += 1
+                                    except Exception:
+                                        total_time_minutes += 1
+            elif normalized_type == "game":
+                # For games, use progress field (stored in minutes)
+                if media.end_date and start_date and end_date:
+                    if start_date <= media.end_date <= end_date:
+                        total_time_minutes += media.progress
+                elif not start_date and not end_date:
+                    # All time
+                    total_time_minutes += media.progress
+            else:
+                # For movies and other media types, get runtime from metadata
+                if media.end_date and start_date and end_date:
+                    if start_date <= media.end_date <= end_date:
+                        try:
+                            media_metadata = providers.services.get_media_metadata(
+                                normalized_type,
+                                media.item.media_id,
+                                media.item.source,
+                            )
+                            if media_metadata and media_metadata.get("runtime"):
+                                total_time_minutes += media_metadata["runtime"]
+                            else:
+                                # Fallback to progress count
+                                total_time_minutes += media.progress
+                        except Exception:
+                            total_time_minutes += media.progress
+                elif not start_date and not end_date:
+                    # All time
+                    try:
+                        media_metadata = providers.services.get_media_metadata(
+                            normalized_type,
+                            media.item.media_id,
+                            media.item.source,
+                        )
+                        if media_metadata and media_metadata.get("runtime"):
+                            total_time_minutes += media_metadata["runtime"]
+                        else:
+                            total_time_minutes += media.progress
+                    except Exception:
+                        total_time_minutes += media.progress
+            
+            if total_time_minutes > 0:
+                media_with_progress.append({
+                    'media': media,
+                    'total_time_minutes': total_time_minutes,
+                    'formatted_duration': minutes_to_hhmm(total_time_minutes),
+                    'last_activity': media.end_date or media.start_date or media.created_at
+                })
+        
+        # Sort by total time, then by most recent activity
+        media_with_progress.sort(
+            key=lambda x: (x['total_time_minutes'], x['last_activity']), 
+            reverse=True
+        )
+        
+        # Take top 10
+        top_played[normalized_type] = media_with_progress[:10]
+    
+    return top_played
