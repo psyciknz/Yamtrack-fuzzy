@@ -903,11 +903,9 @@ def get_hours_per_media_type(user_media, start_date, end_date):
             hours = total_minutes // 60
             remaining_minutes = total_minutes % 60
             
-            if remaining_minutes > 0:
-                hours_per_type[media_type] = f"{hours}h {remaining_minutes}min"
-            else:
-                hours_per_type[media_type] = f"{hours}h"
+            # Always show both hours and minutes for consistency
+            hours_per_type[media_type] = f"{hours}h {remaining_minutes}min"
         else:
-            hours_per_type[media_type] = "0h"
+            hours_per_type[media_type] = "0h 0min"
     
     return hours_per_type
