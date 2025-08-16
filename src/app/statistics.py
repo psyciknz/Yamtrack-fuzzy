@@ -809,3 +809,99 @@ def parse_runtime_to_minutes(runtime_str):
             return None
     except (ValueError, AttributeError):
         return None
+
+
+def get_hours_per_media_type(user_media, start_date, end_date):
+    """Calculate total hours watched per media type within the date range."""
+    hours_per_type = {}
+    
+    for media_type, media_list in user_media.items():
+        total_minutes = 0
+        
+        for media_data in media_list:
+            if hasattr(media_data, 'media'):
+                media = media_data.media
+            else:
+                media = media_data
+            
+            # Check if media is within date range
+            if start_date and end_date:
+                if hasattr(media, 'end_date') and media.end_date:
+                    if not (start_date <= media.end_date <= end_date):
+                        continue
+                elif hasattr(media, 'start_date') and media.start_date:
+                    if not (start_date <= media.start_date <= end_date):
+                        continue
+            
+            # Calculate time based on media type
+            if media_type == 'tv':
+                # For TV shows, count episodes and get runtime from season metadata
+                try:
+                    if hasattr(media, 'seasons'):
+                        for season in media.seasons.all():
+                            if hasattr(season, 'episodes'):
+                                episode_count = season.episodes.count()
+                                # Get season runtime from metadata
+                                try:
+                                    season_metadata = providers.services.get_media_metadata(
+                                        'tv',
+                                        media.item.media_id,
+                                        media.item.source,
+                                        [season.item.season_number]
+                                    )
+                                    if season_metadata and season_metadata.get("details", {}).get("runtime"):
+                                        runtime_str = season_metadata["details"]["runtime"]
+                                        episode_minutes = parse_runtime_to_minutes(runtime_str)
+                                        if episode_minutes:
+                                            total_minutes += episode_count * episode_minutes
+                                        else:
+                                            # Fallback: assume 45 minutes per episode
+                                            total_minutes += episode_count * 45
+                                    else:
+                                        # Fallback: assume 45 minutes per episode
+                                        total_minutes += episode_count * 45
+                                except Exception:
+                                    # Fallback: assume 45 minutes per episode
+                                    total_minutes += episode_count * 45
+                except Exception:
+                    # Fallback: assume 45 minutes per episode
+                    total_minutes += 1 * 45
+            
+            elif media_type == 'movie':
+                # For movies, get runtime from metadata
+                try:
+                    media_metadata = providers.services.get_media_metadata(
+                        'movie',
+                        media.item.media_id,
+                        media.item.source,
+                    )
+                    if media_metadata and media_metadata.get("details", {}).get("runtime"):
+                        runtime_str = media_metadata["details"]["runtime"]
+                        movie_minutes = parse_runtime_to_minutes(runtime_str)
+                        if movie_minutes:
+                            total_minutes += movie_minutes
+                        else:
+                            # Fallback: assume 120 minutes per movie
+                            total_minutes += 120
+                    else:
+                        # Fallback: assume 120 minutes per movie
+                        total_minutes += 120
+                except Exception:
+                    # Fallback: assume 120 minutes per movie
+                    total_minutes += 120
+            
+            elif media_type == 'game':
+                # For games, assume 1 hour per game (or could be based on play time if available)
+                total_minutes += 60
+            
+            else:
+                # For other media types, assume 1 hour
+                total_minutes += 60
+        
+        # Convert to hours and round to 1 decimal place
+        if total_minutes > 0:
+            hours_per_type[media_type] = round(total_minutes / 60, 1)
+        else:
+            hours_per_type[media_type] = 0
+    
+    return hours_per_type
