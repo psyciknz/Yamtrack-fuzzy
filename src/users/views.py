@@ -16,6 +16,7 @@ from users.forms import (
     PasswordChangeForm,
     UserUpdateForm,
 )
+from users.models import DateFormatChoices, TimeFormatChoices
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,17 @@ def preferences(request):
             return redirect("preferences")
         
         # Process form submission for user preferences
-        # This is where you can add logic to handle various preference settings
+        date_format = request.POST.get("date_format")
+        time_format = request.POST.get("time_format")
+        
+        if date_format and date_format in [choice[0] for choice in DateFormatChoices.choices]:
+            request.user.date_format = date_format
+        
+        if time_format and time_format in [choice[0] for choice in TimeFormatChoices.choices]:
+            request.user.time_format = time_format
+        
+        # Save changes and redirect
+        request.user.save()
         messages.success(request, "Preferences updated successfully.")
         return redirect("preferences")
 

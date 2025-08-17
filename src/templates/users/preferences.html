@@ -29,62 +29,99 @@
     <form method="post">
       {% csrf_token %}
       
-      <!-- Display Preferences Section -->
+      <!-- Date Format Preferences Section -->
       <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-200 mb-3">Display Preferences</h3>
-        <div class="space-y-3">
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
-            <div class="flex items-center text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-5 h-5">
-                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                <circle cx="9" cy="9" r="2"></circle>
-                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
-              </svg>
-              <span class="text-gray-200 text-sm ml-2">Show thumbnails in lists</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     name="show_thumbnails"
-                     checked>
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
+        <h3 class="text-lg font-medium text-gray-200 mb-3">Date Format</h3>
+        <p class="text-gray-400 mb-3 text-sm">Choose how dates are displayed throughout the application.</p>
+        <div class="space-y-2">
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_system_default" 
+                   name="date_format" 
+                   value="system_default"
+                   {% if user.date_format == "system_default" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_system_default" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">System default (locale)</span>
+              <span class="text-gray-400 block text-xs">Aug 12, 2025 / 12 Aug 2025</span>
             </label>
           </div>
           
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
-            <div class="flex items-center text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-5 h-5">
-                <path d="M3 6h18"></path>
-                <path d="M7 12h8"></path>
-                <path d="M10 18h4"></path>
-              </svg>
-              <span class="text-gray-200 text-sm ml-2">Compact list view</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     name="compact_view">
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_iso_8601" 
+                   name="date_format" 
+                   value="iso_8601"
+                   {% if user.date_format == "iso_8601" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_iso_8601" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">ISO 8601</span>
+              <span class="text-gray-400 block text-xs">2025-08-12</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_month_d_yyyy" 
+                   name="date_format" 
+                   value="month_d_yyyy"
+                   {% if user.date_format == "month_d_yyyy" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_month_d_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">Month D, YYYY</span>
+              <span class="text-gray-400 block text-xs">Aug 12, 2025</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_d_mon_yyyy" 
+                   name="date_format" 
+                   value="d_mon_yyyy"
+                   {% if user.date_format == "d_mon_yyyy" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_d_mon_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">D Mon YYYY</span>
+              <span class="text-gray-400 block text-xs">12 Aug 2025</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_m_d_yyyy" 
+                   name="date_format" 
+                   value="m_d_yyyy"
+                   {% if user.date_format == "m_d_yyyy" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_m_d_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">M/D/YYYY</span>
+              <span class="text-gray-400 block text-xs">08/12/2025</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_d_m_yyyy" 
+                   name="date_format" 
+                   value="d_m_yyyy"
+                   {% if user.date_format == "d_m_yyyy" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_d_m_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">D/M/YYYY</span>
+              <span class="text-gray-400 block text-xs">12/08/2025</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="date_dd_mm_yyyy" 
+                   name="date_format" 
+                   value="dd_mm_yyyy"
+                   {% if user.date_format == "dd_mm_yyyy" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="date_dd_mm_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">DD.MM.YYYY</span>
+              <span class="text-gray-400 block text-xs">12.08.2025</span>
             </label>
           </div>
         </div>
@@ -92,62 +129,73 @@
 
       <div class="border-t border-gray-600 my-5"></div>
 
-      <!-- Behavior Preferences Section -->
+      <!-- Time Format Preferences Section -->
       <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-200 mb-3">Behavior Preferences</h3>
-        <div class="space-y-3">
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
-            <div class="flex items-center text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-5 h-5">
-                <path d="M12 2v20M2 12h20"></path>
-              </svg>
-              <span class="text-gray-200 text-sm ml-2">Auto-refresh on page load</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     name="auto_refresh"
-                     checked>
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
+        <h3 class="text-lg font-medium text-gray-200 mb-3">Time Format</h3>
+        <p class="text-gray-400 mb-3 text-sm">Choose how times are displayed throughout the application.</p>
+        <div class="space-y-2">
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="time_system_default" 
+                   name="time_format" 
+                   value="system_default"
+                   {% if user.time_format == "system_default" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="time_system_default" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">System default (locale)</span>
+              <span class="text-gray-400 block text-xs">6:45 PM / 18:45</span>
             </label>
           </div>
           
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
-            <div class="flex items-center text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-5 h-5">
-                <path d="M9 12l2 2 4-4"></path>
-                <path d="M21 12c-1 0-2-1-2-2s1-2 2-2 2 1 2 2-1 2-2 2z"></path>
-                <path d="M3 12c1 0 2-1 2-2s-1-2-2-2-2 1-2 2 1 2 2 2z"></path>
-                <path d="M12 3c0 1-1 2-2 2s-2 1-2 2 1 2 2 2 2 1 2 2 1-1 2-2 2-1 2-2-1-2-2-2-2-1-2-2z"></path>
-              </svg>
-              <span class="text-gray-200 text-sm ml-2">Show confirmation dialogs</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     name="show_confirmations"
-                     checked>
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="time_h_mm_ampm" 
+                   name="time_format" 
+                   value="h_mm_ampm"
+                   {% if user.time_format == "h_mm_ampm" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="time_h_mm_ampm" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">12-hour (h:mm AM/PM)</span>
+              <span class="text-gray-400 block text-xs">6:45 PM</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="time_hh_mm_ampm" 
+                   name="time_format" 
+                   value="hh_mm_ampm"
+                   {% if user.time_format == "hh_mm_ampm" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="time_hh_mm_ampm" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">12-hour, leading zero (hh:mm AM/PM)</span>
+              <span class="text-gray-400 block text-xs">06:45 PM</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="time_hh_mm" 
+                   name="time_format" 
+                   value="hh_mm"
+                   {% if user.time_format == "hh_mm" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="time_hh_mm" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">24-hour (HH:mm)</span>
+              <span class="text-gray-400 block text-xs">18:45</span>
+            </label>
+          </div>
+          
+          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
+            <input type="radio" 
+                   id="time_hh_mm_ss" 
+                   name="time_format" 
+                   value="hh_mm_ss"
+                   {% if user.time_format == "hh_mm_ss" %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
+            <label for="time_hh_mm_ss" class="ml-3 text-gray-200 text-sm cursor-pointer">
+              <span class="font-medium">24-hour with seconds (HH:mm:ss)</span>
+              <span class="text-gray-400 block text-xs">18:45:00</span>
             </label>
           </div>
         </div>
@@ -169,7 +217,7 @@
                stroke-linecap="round"
                stroke-linejoin="round"
                class="w-4 h-4 mr-2">
-            <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path>
+            <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 0 2 2H5a2 2 0 0 0-2-2V5a2 2 0 0 1 2-2z"></path>
             <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path>
             <path d="M7 3v4a1 1 0 0 0 1 1h7"></path>
           </svg>
