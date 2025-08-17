@@ -545,9 +545,9 @@
                           </h4>
                           <div class="text-sm text-gray-400 mt-1">
                             <p>
-                              {% if media.start_date %}{{ media.start_date|date_tracker_format }}{% endif %}
+                              {% if media.start_date %}{{ media.start_date|user_date_format:user }}{% endif %}
                               {% if media.start_date and media.end_date %}-{% endif %}
-                              {% if media.end_date %}{{ media.end_date|date_tracker_format }}{% endif %}
+                              {% if media.end_date %}{{ media.end_date|user_date_format:user }}{% endif %}
                             </p>
                           </div>
                           {% if media.score is not None %}

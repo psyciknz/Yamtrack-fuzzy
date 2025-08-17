@@ -446,6 +446,7 @@ def track_modal(
         request,
         "app/components/fill_track.html",
         {
+            "user": request.user,
             "title": title,
             "form": form,
             "media": media,

@@ -111,7 +111,7 @@
                       <div class="text-sm font-medium">{{ tv_season.season_title }}</div>
                       <div class="text-xs text-gray-400">
                         {{ tv_season.max_progress }} Episode{{ tv_season.max_progress|pluralize }}
-                        {% if tv_season.first_air_date %}• {{ tv_season.first_air_date }}{% endif %}
+                        {% if tv_season.first_air_date %}• {{ tv_season.first_air_date|user_date_format:user }}{% endif %}
                       </div>
                     </div>
                   </a>
@@ -337,14 +337,14 @@
               {% if current_instance.start_date %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
                   <span class="text-gray-400">Started:</span>
-                  <span class="text-gray-200">{{ current_instance.start_date|date_tracker_format }}</span>
+                  <span class="text-gray-200">{{ current_instance.start_date|user_date_format:user }}</span>
                 </div>
               {% endif %}
 
               {% if current_instance.end_date %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
                   <span class="text-gray-400">Ended:</span>
-                  <span class="text-gray-200">{{ current_instance.end_date|date_tracker_format }}</span>
+                  <span class="text-gray-200">{{ current_instance.end_date|user_date_format:user }}</span>
                 </div>
               {% endif %}
 
@@ -450,11 +450,11 @@
                       {% endif %}
 
                       {% if user_media.start_date %}
-                        <div class="text-xs text-gray-400">Started: {{ user_media.start_date|date_tracker_format }}</div>
+                        <div class="text-xs text-gray-400">Started: {{ user_media.start_date|user_date_format:user }}</div>
                       {% endif %}
 
                       {% if user_media.end_date %}
-                        <div class="text-xs text-gray-400">Finished: {{ user_media.end_date|date_tracker_format }}</div>
+                        <div class="text-xs text-gray-400">Finished: {{ user_media.end_date|user_date_format:user }}</div>
                       {% endif %}
 
                       {% if user_media.notes %}
@@ -669,7 +669,7 @@
                       <div>
                         <h2 class="text-xl font-semibold mb-1 line-clamp-1">{{ episode.title }}</h2>
                         <p class="text-sm text-gray-400">
-                          Episode {{ episode.episode_number }} • {{ episode.air_date|default_if_none:"Unknown air date" }}
+                          Episode {{ episode.episode_number }} • {{ episode.air_date|user_date_format:user|default_if_none:"Unknown air date" }}
                         </p>
                       </div>
                       <div class="flex space-x-2">
@@ -792,7 +792,7 @@
                   </div>
                   {% if episode.history %}
                     <p class="text-xs text-gray-400 mt-2 px-4">
-                      Last watched: {{ episode.history.0.end_date|date_tracker_format|default_if_none:"No date provided" }}
+                      Last watched: {{ episode.history.0.end_date|user_date_format:user|default_if_none:"No date provided" }}
                       {% if episode.history|length > 1 %}• Watched {{ episode.history|length }} times{% endif %}
                     </p>
                   {% endif %}
