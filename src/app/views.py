@@ -738,6 +738,7 @@ def history_modal(
         request,
         "app/components/fill_history.html",
         {
+            "user": request.user,
             "media_type": media_type,
             "timeline": timeline_entries,
             "total_medias": total_medias,

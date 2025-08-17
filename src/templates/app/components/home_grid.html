@@ -30,7 +30,7 @@
               Release
             {% endif %}
 
-            • {{ media.next_event.datetime|natural_day }} {{ media.next_event.display_time }}
+            • {{ media.next_event.datetime|natural_day }} {{ media.next_event|user_event_time:user }}
           </span>
         </div>
       {% endif %}

@@ -273,26 +273,26 @@ def preferences(request):
 @require_GET
 def integrations(request):
     """Render the integrations settings page."""
-    return render(request, "users/integrations.html")
+    return render(request, "users/integrations.html", {"user": request.user})
 
 
 @require_GET
 def import_data(request):
     """Render the import data settings page."""
     import_tasks = request.user.get_import_tasks()
-    return render(request, "users/import_data.html", {"import_tasks": import_tasks})
+    return render(request, "users/import_data.html", {"user": request.user, "import_tasks": import_tasks})
 
 
 @require_GET
 def export_data(request):
     """Render the export data settings page."""
-    return render(request, "users/export_data.html")
+    return render(request, "users/export_data.html", {"user": request.user})
 
 
 @require_GET
 def about(request):
     """Render the about page."""
-    return render(request, "users/about.html", {"version": settings.VERSION})
+    return render(request, "users/about.html", {"user": request.user, "version": settings.VERSION})
 
 
 @require_POST
