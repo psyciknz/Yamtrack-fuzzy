@@ -33,97 +33,33 @@
       <div class="mb-6">
         <h3 class="text-lg font-medium text-gray-200 mb-3">Date Format</h3>
         <p class="text-gray-400 mb-3 text-sm">Choose how dates are displayed throughout the application.</p>
-        <div class="space-y-2">
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_system_default" 
-                   name="date_format" 
-                   value="system_default"
-                   {% if user.date_format == "system_default" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_system_default" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">System default (locale)</span>
-              <span class="text-gray-400 block text-xs">Aug 12, 2025 / 12 Aug 2025</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_iso_8601" 
-                   name="date_format" 
-                   value="iso_8601"
-                   {% if user.date_format == "iso_8601" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_iso_8601" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">ISO 8601</span>
-              <span class="text-gray-400 block text-xs">2025-08-12</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_month_d_yyyy" 
-                   name="date_format" 
-                   value="month_d_yyyy"
-                   {% if user.date_format == "month_d_yyyy" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_month_d_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">Month D, YYYY</span>
-              <span class="text-gray-400 block text-xs">Aug 12, 2025</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_d_mon_yyyy" 
-                   name="date_format" 
-                   value="d_mon_yyyy"
-                   {% if user.date_format == "d_mon_yyyy" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_d_mon_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">D Mon YYYY</span>
-              <span class="text-gray-400 block text-xs">12 Aug 2025</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_m_d_yyyy" 
-                   name="date_format" 
-                   value="m_d_yyyy"
-                   {% if user.date_format == "m_d_yyyy" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_m_d_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">M/D/YYYY</span>
-              <span class="text-gray-400 block text-xs">08/12/2025</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_d_m_yyyy" 
-                   name="date_format" 
-                   value="d_m_yyyy"
-                   {% if user.date_format == "d_m_yyyy" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_d_m_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">D/M/YYYY</span>
-              <span class="text-gray-400 block text-xs">12/08/2025</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="date_dd_mm_yyyy" 
-                   name="date_format" 
-                   value="dd_mm_yyyy"
-                   {% if user.date_format == "dd_mm_yyyy" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="date_dd_mm_yyyy" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">DD.MM.YYYY</span>
-              <span class="text-gray-400 block text-xs">12.08.2025</span>
-            </label>
-          </div>
+        <div class="p-3 bg-[#39404b] rounded-md">
+          <label for="date_format" class="block text-gray-200 text-sm mb-2">Date Format</label>
+          <select name="date_format" 
+                  id="date_format"
+                  class="w-full px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <option value="system_default" {% if user.date_format == "system_default" %}selected{% endif %}>
+              System default (locale) — Aug 12, 2025 / 12 Aug 2025
+            </option>
+            <option value="iso_8601" {% if user.date_format == "iso_8601" %}selected{% endif %}>
+              ISO 8601 — 2025-08-12
+            </option>
+            <option value="month_d_yyyy" {% if user.date_format == "month_d_yyyy" %}selected{% endif %}>
+              Month D, YYYY — Aug 12, 2025
+            </option>
+            <option value="d_mon_yyyy" {% if user.date_format == "d_mon_yyyy" %}selected{% endif %}>
+              D Mon YYYY — 12 Aug 2025
+            </option>
+            <option value="m_d_yyyy" {% if user.date_format == "m_d_yyyy" %}selected{% endif %}>
+              M/D/YYYY — 08/12/2025
+            </option>
+            <option value="d_m_yyyy" {% if user.date_format == "d_m_yyyy" %}selected{% endif %}>
+              D/M/YYYY — 12/08/2025
+            </option>
+            <option value="dd_mm_yyyy" {% if user.date_format == "dd_mm_yyyy" %}selected{% endif %}>
+              DD.MM.YYYY — 12.08.2025
+            </option>
+          </select>
         </div>
       </div>
 
@@ -133,71 +69,27 @@
       <div class="mb-6">
         <h3 class="text-lg font-medium text-gray-200 mb-3">Time Format</h3>
         <p class="text-gray-400 mb-3 text-sm">Choose how times are displayed throughout the application.</p>
-        <div class="space-y-2">
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="time_system_default" 
-                   name="time_format" 
-                   value="system_default"
-                   {% if user.time_format == "system_default" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="time_system_default" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">System default (locale)</span>
-              <span class="text-gray-400 block text-xs">6:45 PM / 18:45</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="time_h_mm_ampm" 
-                   name="time_format" 
-                   value="h_mm_ampm"
-                   {% if user.time_format == "h_mm_ampm" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="time_h_mm_ampm" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">12-hour (h:mm AM/PM)</span>
-              <span class="text-gray-400 block text-xs">6:45 PM</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="time_hh_mm_ampm" 
-                   name="time_format" 
-                   value="hh_mm_ampm"
-                   {% if user.time_format == "hh_mm_ampm" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="time_hh_mm_ampm" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">12-hour, leading zero (hh:mm AM/PM)</span>
-              <span class="text-gray-400 block text-xs">06:45 PM</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="time_hh_mm" 
-                   name="time_format" 
-                   value="hh_mm"
-                   {% if user.time_format == "hh_mm" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="time_hh_mm" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">24-hour (HH:mm)</span>
-              <span class="text-gray-400 block text-xs">18:45</span>
-            </label>
-          </div>
-          
-          <div class="flex items-center p-3 bg-[#39404b] rounded-md">
-            <input type="radio" 
-                   id="time_hh_mm_ss" 
-                   name="time_format" 
-                   value="hh_mm_ss"
-                   {% if user.time_format == "hh_mm_ss" %}checked{% endif %}
-                   class="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 focus:ring-2">
-            <label for="time_hh_mm_ss" class="ml-3 text-gray-200 text-sm cursor-pointer">
-              <span class="font-medium">24-hour with seconds (HH:mm:ss)</span>
-              <span class="text-gray-400 block text-xs">18:45:00</span>
-            </label>
-          </div>
+        <div class="p-3 bg-[#39404b] rounded-md">
+          <label for="time_format" class="block text-gray-200 text-sm mb-2">Time Format</label>
+          <select name="time_format" 
+                  id="time_format"
+                  class="w-full px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <option value="system_default" {% if user.time_format == "system_default" %}selected{% endif %}>
+              System default (locale) — 6:45 PM / 18:45
+            </option>
+            <option value="h_mm_ampm" {% if user.time_format == "h_mm_ampm" %}selected{% endif %}>
+              12-hour (h:mm AM/PM) — 6:45 PM
+            </option>
+            <option value="hh_mm_ampm" {% if user.time_format == "hh_mm_ampm" %}selected{% endif %}>
+              12-hour, leading zero (hh:mm AM/PM) — 06:45 PM
+            </option>
+            <option value="hh_mm" {% if user.time_format == "hh_mm" %}selected{% endif %}>
+              24-hour (HH:mm) — 18:45
+            </option>
+            <option value="hh_mm_ss" {% if user.time_format == "hh_mm_ss" %}selected{% endif %}>
+              24-hour with seconds (HH:mm:ss) — 18:45:00
+            </option>
+          </select>
         </div>
       </div>
 
