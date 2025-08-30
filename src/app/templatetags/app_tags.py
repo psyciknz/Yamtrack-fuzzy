@@ -221,7 +221,9 @@ def user_event_time(event, user):
         if user.time_format == TimeFormatChoices.SYSTEM_DEFAULT:
             time_str = formats.date_format(local_dt, "TIME_FORMAT")
         elif user.time_format == TimeFormatChoices.H_MM_AMPM:
-            time_str = local_dt.strftime("%-I:%M %p")
+            # Use %I and manually remove leading zero for cross-platform compatibility
+            hour = str(local_dt.hour % 12 or 12)  # Convert 0 to 12 for 12-hour format
+            time_str = f"{hour}:{local_dt.strftime('%M %p')}"
         elif user.time_format == TimeFormatChoices.HH_MM_AMPM:
             time_str = local_dt.strftime("%I:%M %p")
         elif user.time_format == TimeFormatChoices.HH_MM:

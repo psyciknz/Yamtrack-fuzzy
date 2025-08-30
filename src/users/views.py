@@ -11,11 +11,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from django_celery_beat.models import PeriodicTask
 
 from app.models import Item, MediaTypes
-from users.forms import (
-    NotificationSettingsForm,
-    PasswordChangeForm,
-    UserUpdateForm,
-)
+from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
 from users.models import DateFormatChoices, TimeFormatChoices
 
 logger = logging.getLogger(__name__)
