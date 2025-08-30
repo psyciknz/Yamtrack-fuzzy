@@ -487,7 +487,7 @@ class MediaManager(models.Manager):
         # Define primary sort functions based on sort_by
         primary_sort_functions = {
             "recent": lambda x: -timezone.datetime.timestamp(
-                    x.progressed_at if x.progressed_at is not None else x.created_at,
+                x.progressed_at if x.progressed_at is not None else x.created_at,
             ),
             "upcoming": lambda x: (
                 x.next_event is None,

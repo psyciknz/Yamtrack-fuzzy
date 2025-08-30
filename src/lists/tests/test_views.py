@@ -434,30 +434,30 @@ class ListDetailViewTests(TestCase):
         """Test the list_detail view with rating sorting."""
         mock_user_can_view.return_value = True
         mock_update_preference.return_value = "rating"
-        
+
         # Mock the media metadata to avoid API calls
         mock_get_media_metadata.return_value = {
             "max_progress": 1,
             "related": {"seasons": []},
-            "title": "Test Media"
+            "title": "Test Media",
         }
 
         # Create model instances with different ratings
-        movie = Movie.objects.create(
+        Movie.objects.create(
             item=self.movie_item,
             status=Status.COMPLETED.value,
             user=self.user,
             score=8.5,
         )
 
-        tv = TV.objects.create(
+        TV.objects.create(
             item=self.tv_item,
             status=Status.IN_PROGRESS.value,
             user=self.user,
             score=9.0,
         )
 
-        anime = Anime.objects.create(
+        Anime.objects.create(
             item=self.anime_item,
             status=Status.PLANNING.value,
             user=self.user,
@@ -470,7 +470,7 @@ class ListDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "rating")
-        
+
         # Check that items are sorted by rating (highest first)
         items = response.context["items"]
         self.assertEqual(len(items), 3)
