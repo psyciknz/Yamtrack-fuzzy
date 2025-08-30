@@ -486,15 +486,15 @@ class MediaManager(models.Manager):
         """Sort in-progress media based on the sort criteria."""
         # Define primary sort functions based on sort_by
         primary_sort_functions = {
-            "recent": lambda x: -timezone.datetime.timestamp(
+            users.models.HomeSortChoices.RECENT: lambda x: -timezone.datetime.timestamp(
                 x.progressed_at if x.progressed_at is not None else x.created_at,
             ),
-            "upcoming": lambda x: (
+            users.models.HomeSortChoices.UPCOMING: lambda x: (
                 x.next_event is None,
                 x.next_event.datetime if x.next_event else None,
             ),
-            "title": lambda x: x.item.title.lower(),
-            "completion": lambda x: (
+            users.models.HomeSortChoices.TITLE: lambda x: x.item.title.lower(),
+            users.models.HomeSortChoices.COMPLETION: lambda x: (
                 x.max_progress is None,
                 -(
                     x.progress / x.max_progress * 100
@@ -502,7 +502,7 @@ class MediaManager(models.Manager):
                     else 0
                 ),
             ),
-            "episodes_left": lambda x: (
+            users.models.HomeSortChoices.EPISODES_LEFT: lambda x: (
                 x.max_progress is None,
                 (x.max_progress - x.progress if x.max_progress else 0),
             ),
