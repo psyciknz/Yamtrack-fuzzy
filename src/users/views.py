@@ -4,9 +4,11 @@ import apprise
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.defaultfilters import pluralize
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
@@ -284,6 +286,10 @@ def export_data(request):
     """Render the export data settings page."""
     return render(request, "users/export_data.html", {"user": request.user})
 
+@require_GET
+def advanced(request):
+    """Render the advanced settings page."""
+    return render(request, "users/advanced.html")
 
 @require_GET
 def about(request):
@@ -341,3 +347,19 @@ def update_plex_usernames(request):
         messages.success(request, "Plex usernames updated successfully")
 
     return redirect("integrations")
+
+@require_POST
+def clear_search_cache(request):
+    """Clear all cached search entries."""
+    deleted = cache.delete_pattern("search_*")
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} search entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s search entries",
+        deleted,
+    )
+
+    return redirect("advanced")
