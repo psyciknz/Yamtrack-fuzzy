@@ -79,6 +79,7 @@ class Item(CalendarTriggerMixin, models.Model):
     image = models.URLField()  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
+    runtime_minutes = models.PositiveIntegerField(null=True, blank=True, help_text="Runtime in minutes")
 
     class Meta:
         """Meta options for the model."""
@@ -1402,6 +1403,7 @@ class Season(Media):
             )
 
         image = settings.IMG_NONE
+        runtime_minutes = None
         for episode in season_metadata["episodes"]:
             if episode["episode_number"] == int(episode_number):
                 if episode.get("still_path"):
@@ -1413,9 +1415,14 @@ class Season(Media):
                     image = episode["image"]
                 else:
                     image = settings.IMG_NONE
+                
+                # Extract runtime from episode metadata
+                if "runtime" in episode and episode["runtime"]:
+                    from app.statistics import parse_runtime_to_minutes
+                    runtime_minutes = parse_runtime_to_minutes(episode["runtime"])
                 break
 
-        item, _ = Item.objects.get_or_create(
+        item, created = Item.objects.get_or_create(
             media_id=self.item.media_id,
             source=self.item.source,
             media_type=MediaTypes.EPISODE.value,
@@ -1424,8 +1431,14 @@ class Season(Media):
             defaults={
                 "title": self.item.title,
                 "image": image,
+                "runtime_minutes": runtime_minutes,
             },
         )
+        
+        # Update runtime if it's not set and we have it now
+        if not created and not item.runtime_minutes and runtime_minutes:
+            item.runtime_minutes = runtime_minutes
+            item.save()
 
         return item
 

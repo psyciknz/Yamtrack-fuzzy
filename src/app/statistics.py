@@ -762,6 +762,15 @@ def _calculate_episode_time_from_data(episode_data, logger):
     return episode_minutes
 
 
+def _calculate_episode_time_from_cache(episode, logger):
+    """Calculate episode time from cached runtime data."""
+    if not hasattr(episode, 'item') or not episode.item.runtime_minutes:
+        logger.warning(f"Runtime data missing for episode {episode.item.episode_number if episode.item else 'unknown'}, skipping")
+        return 0  # Skip this episode instead of failing
+    
+    return episode.item.runtime_minutes
+
+
 def _is_episode_in_range(episode, start_date, end_date):
     """Check if episode is within the specified date range."""
     if episode.end_date and start_date and end_date:
@@ -775,7 +784,7 @@ def _is_episode_in_range(episode, start_date, end_date):
 
 
 def _calculate_tv_time(media, start_date, end_date, logger):
-    """Calculate total time for TV shows using locally processed runtime data."""
+    """Calculate total time for TV shows using cached runtime data."""
     total_time_minutes = 0
     episode_count = 0
     
@@ -786,33 +795,24 @@ def _calculate_tv_time(media, start_date, end_date, logger):
         if not hasattr(season, 'episodes'):
             continue
             
-        # Get season metadata with processed episodes that include runtime
-        season_metadata = _get_season_metadata_with_episodes(media, season, logger)
-        
-        if not season_metadata or 'episodes' not in season_metadata:
-            logger.warning(f"No episode metadata available for {media.item.title} S{season.item.season_number}")
-            continue
-        
-        for episode_data in season_metadata['episodes']:
-            episode_number = episode_data['episode_number']
-            
-            # Find the corresponding database episode
-            db_episode = season.episodes.filter(item__episode_number=episode_number).first()
-            if not db_episode:
-                continue
-                
+        for episode in season.episodes.all():
             # Check if episode is within date range
-            if not _is_episode_in_range(db_episode, start_date, end_date):
+            if not _is_episode_in_range(episode, start_date, end_date):
                 continue
                 
-            episode_count += 1
-            total_time_minutes += _calculate_episode_time_from_data(episode_data, logger)
+            try:
+                episode_count += 1
+                total_time_minutes += _calculate_episode_time_from_cache(episode, logger)
+            except ValueError as e:
+                logger.warning(f"Skipping episode due to missing runtime: {e}")
+                # Continue processing other episodes instead of failing completely
+                continue
     
     return total_time_minutes, episode_count
 
 
 def _calculate_anime_time(media, start_date, end_date, logger):
-    """Calculate total time for anime using locally stored runtime."""
+    """Calculate total time for anime using cached runtime data."""
     total_time_minutes = 0
     episode_count = 0
     
@@ -820,51 +820,35 @@ def _calculate_anime_time(media, start_date, end_date, logger):
     if media.end_date and start_date and end_date:
         if start_date <= media.end_date <= end_date:
             episode_count = media.progress
-            total_time_minutes = _get_anime_runtime_from_metadata(media, episode_count, logger, "(date range)")
+            total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(date range)")
     elif not start_date and not end_date:
         # All time
         episode_count = media.progress
-        total_time_minutes = _get_anime_runtime_from_metadata(media, episode_count, logger, "(all time)")
+        total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(all time)")
     
     return total_time_minutes, episode_count
 
 
 
 
-def _get_anime_runtime_from_metadata(media, episode_count, logger, context=""):
-    """Get anime runtime in minutes from locally stored metadata."""
-    # Get the media metadata that should already be loaded
-    media_metadata = _get_media_metadata_for_statistics(media)
+def _get_anime_runtime_from_cache(media, episode_count, logger, context=""):
+    """Get anime runtime in minutes from cached runtime data."""
+    if not hasattr(media, 'item') or not media.item.runtime_minutes:
+        logger.warning(f"Runtime data missing for anime '{media.item.title}' {context}, skipping")
+        return 0  # Skip this anime instead of failing
     
-    if not media_metadata or not media_metadata.get("details", {}).get("runtime"):
-        raise ValueError(f"Runtime data missing for anime '{media.item.title}' {context}")
-    
-    runtime_str = media_metadata["details"]["runtime"]
-    logger.info(f"Anime '{media.item.title}' {context}: runtime '{runtime_str}' -> {parse_runtime_to_minutes(runtime_str)} minutes")
-    episode_minutes = parse_runtime_to_minutes(runtime_str)
-    
-    if episode_minutes is None:
-        raise ValueError(f"Failed to parse runtime '{runtime_str}' for anime '{media.item.title}' {context}")
-    
-    return episode_count * episode_minutes
+    logger.info(f"Anime '{media.item.title}' {context}: using cached runtime {media.item.runtime_minutes} minutes per episode")
+    return episode_count * media.item.runtime_minutes
 
 
-def _get_media_runtime_from_metadata(media, logger, context=""):
-    """Get media runtime in minutes from locally stored metadata."""
-    # Get the media metadata that should already be loaded
-    media_metadata = _get_media_metadata_for_statistics(media)
+def _get_media_runtime_from_cache(media, logger, context=""):
+    """Get media runtime in minutes from cached runtime data."""
+    if not hasattr(media, 'item') or not media.item.runtime_minutes:
+        logger.warning(f"Runtime data missing for media '{media.item.title}' {context}, skipping")
+        return 0  # Skip this media instead of failing
     
-    if not media_metadata or not media_metadata.get("details", {}).get("runtime"):
-        raise ValueError(f"Runtime data missing for media '{media.item.title}' {context}")
-    
-    runtime_str = media_metadata["details"]["runtime"]
-    logger.info(f"Media '{media.item.title}' {context}: runtime '{runtime_str}' -> {parse_runtime_to_minutes(runtime_str)} minutes")
-    movie_minutes = parse_runtime_to_minutes(runtime_str)
-    
-    if movie_minutes is None:
-        raise ValueError(f"Failed to parse runtime '{runtime_str}' for media '{media.item.title}' {context}")
-    
-    return movie_minutes
+    logger.info(f"Media '{media.item.title}' {context}: using cached runtime {media.item.runtime_minutes} minutes")
+    return media.item.runtime_minutes
 
 
 def _get_media_metadata_for_statistics(media):
@@ -882,16 +866,16 @@ def _get_media_metadata_for_statistics(media):
 
 
 def _calculate_movie_time(media, start_date, end_date, normalized_type, logger):
-    """Calculate total time for movies and other media types using locally stored runtime."""
+    """Calculate total time for movies and other media types using cached runtime data."""
     total_time_minutes = 0
     
     # Check if media is within date range
     if media.end_date and start_date and end_date:
         if start_date <= media.end_date <= end_date:
-            total_time_minutes = _get_media_runtime_from_metadata(media, logger, "(date range)")
+            total_time_minutes = _get_media_runtime_from_cache(media, logger, "(date range)")
     elif not start_date and not end_date:
         # All time
-        total_time_minutes = _get_media_runtime_from_metadata(media, logger, "(all time)")
+        total_time_minutes = _get_media_runtime_from_cache(media, logger, "(all time)")
     
     return total_time_minutes
 
