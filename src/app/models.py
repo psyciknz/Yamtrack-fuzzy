@@ -203,12 +203,19 @@ class Item(CalendarTriggerMixin, models.Model):
                     self.media_id,
                     self.source,
                 )
+                # Extract runtime from metadata
+                runtime_minutes = None
+                if tv_metadata.get("details", {}).get("runtime"):
+                    from app.statistics import parse_runtime_to_minutes
+                    runtime_minutes = parse_runtime_to_minutes(tv_metadata["details"]["runtime"])
+                
                 tv_item = Item.objects.create(
                     media_id=self.media_id,
                     source=self.source,
                     media_type=MediaTypes.TV.value,
                     title=tv_metadata["title"],
                     image=tv_metadata["image"],
+                    runtime_minutes=runtime_minutes,
                 )
                 logger.info("Created TV item %s for season %s", tv_item, self)
 

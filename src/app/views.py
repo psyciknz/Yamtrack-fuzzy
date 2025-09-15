@@ -471,6 +471,12 @@ def media_save(request):
             source,
             [season_number],
         )
+        # Extract runtime from metadata
+        runtime_minutes = None
+        if metadata.get("details", {}).get("runtime"):
+            from app.statistics import parse_runtime_to_minutes
+            runtime_minutes = parse_runtime_to_minutes(metadata["details"]["runtime"])
+        
         item, _ = Item.objects.get_or_create(
             media_id=media_id,
             source=source,
@@ -479,8 +485,14 @@ def media_save(request):
             defaults={
                 "title": metadata["title"],
                 "image": metadata["image"],
+                "runtime_minutes": runtime_minutes,
             },
         )
+        
+        # Update runtime if it's not set and we have it now
+        if not item.runtime_minutes and runtime_minutes:
+            item.runtime_minutes = runtime_minutes
+            item.save()
         model = apps.get_model(app_label="app", model_name=media_type)
         instance = model(item=item, user=request.user)
 
