@@ -881,7 +881,11 @@ def _calculate_anime_time(media, start_date, end_date, logger):
 
 def _get_anime_runtime_from_cache(media, episode_count, logger, context=""):
     """Get anime runtime in minutes from cached runtime data."""
-    if not hasattr(media, 'item') or not media.item.runtime_minutes:
+    if not hasattr(media, 'item') or not media.item:
+        logger.warning(f"Runtime data missing for anime (no item) {context}, skipping")
+        return 0  # Skip this anime instead of failing
+        
+    if not media.item.runtime_minutes:
         logger.warning(f"Runtime data missing for anime '{media.item.title}' {context}, skipping")
         return 0  # Skip this anime instead of failing
     
@@ -891,7 +895,11 @@ def _get_anime_runtime_from_cache(media, episode_count, logger, context=""):
 
 def _get_media_runtime_from_cache(media, logger, context=""):
     """Get media runtime in minutes from cached runtime data."""
-    if not hasattr(media, 'item') or not media.item.runtime_minutes:
+    if not hasattr(media, 'item') or not media.item:
+        logger.warning(f"Runtime data missing for media (no item) {context}, skipping")
+        return 0  # Skip this media instead of failing
+        
+    if not media.item.runtime_minutes:
         logger.warning(f"Runtime data missing for media '{media.item.title}' {context}, skipping")
         return 0  # Skip this media instead of failing
     

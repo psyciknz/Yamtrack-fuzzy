@@ -27,6 +27,16 @@ class AppConfig(AppConfig):
         """Schedule runtime population task to run once on startup."""
         try:
             from app.tasks import populate_runtime_data_continuous
+            from django.core.cache import cache
+            
+            # Use cache to prevent multiple tasks across different processes
+            cache_key = 'runtime_population_scheduled'
+            if cache.get(cache_key):
+                logger.info("Runtime population task already scheduled by another process")
+                return
+                
+            # Set cache for 5 minutes to prevent duplicate scheduling
+            cache.set(cache_key, True, 300)
             
             # Schedule the task to run in 60 seconds to allow the app to fully start
             # and avoid database access warnings
