@@ -238,34 +238,142 @@ class MediaManager(models.Manager):
         return [f"historical{media_type}" for media_type in MediaTypes.values]
 
     def get_media_list(self, user, media_type, status_filter, sort_filter, search=None):
-        """Get media list based on filters, sorting and search."""
+        """Get a media list by type with filtering and sorting."""
         model = apps.get_model(app_label="app", model_name=media_type)
+        
+        # Build base queryset
         queryset = model.objects.filter(user=user.id)
-
+        
+        # Apply status filter
         if status_filter != users.models.MediaStatusChoices.ALL:
             queryset = queryset.filter(status=status_filter)
-
+        
+        # Apply search filter
         if search:
-            queryset = queryset.filter(item__title__icontains=search)
-
-        queryset = queryset.annotate(
-            repeats=Window(
-                expression=Count("id"),
-                partition_by=[F("item")],
-            ),
-            row_number=Window(
-                expression=RowNumber(),
-                partition_by=[F("item")],
-                order_by=F("created_at").desc(),
-            ),
-        ).filter(row_number=1)
+            queryset = queryset.filter(
+                models.Q(item__title__icontains=search)
+                | models.Q(item__media_id__icontains=search)
+            )
+        
+        # Handle duplicate entries by selecting the most recent record for each item
+        if sort_filter == "progress":
+            # For progress sorting, select the record with highest individual progress
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("progress").desc(),
+                ),
+            ).filter(row_number=1)
+        else:
+            # For non-progress sorting, select the most recent record
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("created_at").desc(),
+                ),
+            ).filter(row_number=1)
 
         queryset = queryset.select_related("item")
         queryset = self._apply_prefetch_related(queryset, media_type)
-
+        
+        # Aggregate data from duplicate entries FIRST
+        queryset = self._aggregate_duplicate_data(queryset, user, media_type)
+        
+        # Apply sorting AFTER aggregation
         if sort_filter:
-            return self._sort_media_list(queryset, sort_filter, media_type)
+            queryset = self._sort_media_list(queryset, sort_filter, media_type)
+        
         return queryset
+
+    def _aggregate_duplicate_data(self, queryset, user, media_type):
+        """Aggregate data from duplicate entries for each item."""
+        # Get all media entries for the user to aggregate data
+        model = apps.get_model(app_label="app", model_name=media_type)
+        all_media = model.objects.filter(user=user.id).select_related("item")
+        
+        # Group media by item_id
+        media_by_item = {}
+        for media in all_media:
+            item_id = media.item.id
+            if item_id not in media_by_item:
+                media_by_item[item_id] = []
+            media_by_item[item_id].append(media)
+        
+        # Aggregate data for each item in the queryset
+        for media in queryset:
+            item_id = media.item.id
+            if item_id in media_by_item and len(media_by_item[item_id]) > 1:
+                # Aggregate data from all duplicates
+                self._aggregate_item_data(media, media_by_item[item_id])
+        
+        return queryset
+
+    def _aggregate_item_data(self, display_media, all_media_entries):
+        """Aggregate data from multiple media entries for the same item."""
+        # Sort by created_at to get chronological order
+        sorted_entries = sorted(all_media_entries, key=lambda x: x.created_at)
+        
+        # Aggregate progress (sum all progress values)
+        total_progress = sum(entry.progress for entry in all_media_entries)
+        display_media.aggregated_progress = total_progress
+        
+        # Aggregate start date (earliest start date)
+        start_dates = [entry.start_date for entry in all_media_entries if entry.start_date]
+        if start_dates:
+            display_media.aggregated_start_date = min(start_dates)
+        else:
+            display_media.aggregated_start_date = None
+        
+        # Aggregate end date (latest end date)
+        end_dates = [entry.end_date for entry in all_media_entries if entry.end_date]
+        if end_dates:
+            display_media.aggregated_end_date = max(end_dates)
+        else:
+            display_media.aggregated_end_date = None
+        
+        # Aggregate status (most recent status)
+        display_media.aggregated_status = display_media.status  # Already the most recent due to row_number=1
+        
+        # Aggregate rating (find the most recent rating among all entries)
+        # Since created_at only represents when the entry was first created,
+        # we need to use a different approach to find the most recent rating
+        # We'll prioritize entries with more recent activity (end_date, progressed_at)
+        latest_rating = None
+        latest_activity = None
+        
+        for entry in all_media_entries:
+            if entry.score is not None:
+                # Determine the most recent activity for this entry
+                entry_activity = None
+                if entry.end_date:
+                    entry_activity = entry.end_date
+                elif entry.progressed_at:
+                    entry_activity = entry.progressed_at
+                else:
+                    entry_activity = entry.created_at
+                
+                # If this entry has more recent activity, use its rating
+                if latest_activity is None or entry_activity > latest_activity:
+                    latest_activity = entry_activity
+                    latest_rating = entry.score
+        
+        if latest_rating is not None:
+            display_media.aggregated_score = latest_rating
+        else:
+            display_media.aggregated_score = None
+        
+        # Store the number of repeats for display
+        display_media.repeats = len(all_media_entries)
 
     def _apply_prefetch_related(self, queryset, media_type):
         """Apply appropriate prefetch_related based on media type."""
@@ -391,6 +499,17 @@ class MediaManager(models.Manager):
 
     def _sort_generic_media_list(self, queryset, sort_filter):
         """Apply generic sorting logic for all media types."""
+        # Handle progress sorting specially to use aggregated progress
+        if sort_filter == "progress":
+            # Since we're now sorting after aggregation, we can use the aggregated_progress attribute
+            # Convert to list for Python-based sorting since aggregated_progress is a Python attribute
+            media_list = list(queryset)
+            return sorted(
+                media_list,
+                key=lambda x: (getattr(x, 'aggregated_progress', x.progress), x.item.title.lower()),
+                reverse=True
+            )
+        
         # Handle sorting by date fields with special null handling
         if sort_filter in ("start_date", "end_date"):
             # For start_date, sort ascending (earliest first)
@@ -847,6 +966,16 @@ class Media(models.Model):
     @property
     def formatted_progress(self):
         """Return the progress of the media in a formatted string."""
+        return str(self.progress)
+
+    @property
+    def formatted_aggregated_progress(self):
+        """Return formatted aggregated progress string."""
+        if hasattr(self, 'aggregated_progress') and self.aggregated_progress is not None:
+            # Format based on media type
+            if hasattr(self, 'item') and self.item.media_type == MediaTypes.GAME.value:
+                return app.helpers.minutes_to_hhmm(self.aggregated_progress)
+            return str(self.aggregated_progress)
         return str(self.progress)
 
     def increase_progress(self):
