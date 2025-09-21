@@ -732,8 +732,13 @@ def get_hours_per_media_type(user_media, start_date, end_date):
                 anime_minutes, _ = _calculate_anime_time(media, start_date, end_date, logger)
                 total_minutes += anime_minutes
             elif media_type == 'game':
-                # For games, assume 1 hour per game (or could be based on play time if available)
-                total_minutes += 60
+                # For games, use progress field (stored in minutes)
+                if media.end_date and start_date and end_date:
+                    if start_date <= media.end_date <= end_date:
+                        total_minutes += media.progress
+                elif not start_date and not end_date:
+                    # All time
+                    total_minutes += media.progress
             else:
                 # For other media types, assume 1 hour
                 total_minutes += 60
