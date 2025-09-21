@@ -317,6 +317,9 @@ ADMIN_ENABLED = config("ADMIN_ENABLED", default=False, cast=bool)
 
 TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
 
+# Runtime population settings
+RUNTIME_POPULATION_DISABLED = config("RUNTIME_POPULATION_DISABLED", default=False, cast=bool)
+
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
 IMG_NONE = "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-basic-38-picture-grey-c2ebdbb057f2a7614185931650f8cee23fa137b93812ccb132b9df511df1cfac.svg"
@@ -363,7 +366,9 @@ IGDB_NSFW = config("IGDB_NSFW", default=False, cast=bool)
 
 STEAM_API_KEY = config(
     "STEAM_API_KEY",
-    default=secret("STEAM_API_KEY_FILE", ""), # Generate default key https://steamcommunity.com/dev/apikey
+    default=secret(
+        "STEAM_API_KEY_FILE", ""
+    ),  # Generate default key https://steamcommunity.com/dev/apikey
 )
 
 HARDCOVER_API = config(

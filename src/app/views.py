@@ -184,7 +184,9 @@ def media_search(request):
 
 
 @require_GET
-def media_details(request, source, media_type, media_id, title):  # noqa: ARG001 title for URL
+def media_details(
+    request, source, media_type, media_id, title
+):  # noqa: ARG001 title for URL
     """Return the details page for a media item."""
     media_metadata = services.get_media_metadata(media_type, media_id, source)
     user_medias = BasicMedia.objects.filter_media_prefetch(
@@ -231,7 +233,9 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
 
 
 @require_GET
-def season_details(request, source, media_id, title, season_number):  # noqa: ARG001 For URL
+def season_details(
+    request, source, media_id, title, season_number
+):  # noqa: ARG001 For URL
     """Return the details page for a season."""
     tv_with_seasons_metadata = services.get_media_metadata(
         "tv_with_seasons",
@@ -524,6 +528,12 @@ def media_save(request):
             source,
             [season_number],
         )
+        # Extract runtime from metadata
+        runtime_minutes = None
+        if metadata.get("details", {}).get("runtime"):
+            from app.statistics import parse_runtime_to_minutes
+            runtime_minutes = parse_runtime_to_minutes(metadata["details"]["runtime"])
+        
         item, _ = Item.objects.get_or_create(
             media_id=media_id,
             source=source,
@@ -532,8 +542,14 @@ def media_save(request):
             defaults={
                 "title": metadata["title"],
                 "image": metadata["image"],
+                "runtime_minutes": runtime_minutes,
             },
         )
+        
+        # Update runtime if it's not set and we have it now
+        if not item.runtime_minutes and runtime_minutes:
+            item.runtime_minutes = runtime_minutes
+            item.save()
         model = apps.get_model(app_label="app", model_name=media_type)
         instance = model(item=item, user=request.user)
 
@@ -872,6 +888,10 @@ def statistics(request):
         status_distribution,
     )
     timeline = stats.get_timeline(user_media)
+    top_played = stats.get_top_played_media(user_media, start_date, end_date)
+    
+    # Calculate hours per media type for the new statistics cards
+    hours_per_media_type = stats.get_hours_per_media_type(user_media, start_date, end_date)
 
     activity_data = stats.get_activity_data(request.user, start_date, end_date)
 
@@ -883,9 +903,11 @@ def statistics(request):
         "media_type_distribution": media_type_distribution,
         "score_distribution": score_distribution,
         "top_rated": top_rated,
+        "top_played": top_played,
         "status_distribution": status_distribution,
         "status_pie_chart_data": status_pie_chart_data,
         "timeline": timeline,
+        "hours_per_media_type": hours_per_media_type,
     }
 
     return render(request, "app/statistics.html", context)
