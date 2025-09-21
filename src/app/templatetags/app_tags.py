@@ -207,6 +207,41 @@ def natural_day(value):
 
 
 @register.filter
+def user_event_time(event, user):
+    """Format event time according to user's time format preference."""
+    if not event or not user or event.is_sentinel_time:
+        return ""
+    
+    try:
+        from users.models import TimeFormatChoices
+        from django.utils import timezone, formats
+        
+        local_dt = timezone.localtime(event.datetime)
+        
+        if user.time_format == TimeFormatChoices.SYSTEM_DEFAULT:
+            time_str = formats.date_format(local_dt, "TIME_FORMAT")
+        elif user.time_format == TimeFormatChoices.H_MM_AMPM:
+            # Use %I and manually remove leading zero for cross-platform compatibility
+            hour = str(local_dt.hour % 12 or 12)  # Convert 0 to 12 for 12-hour format
+            time_str = f"{hour}:{local_dt.strftime('%M %p')}"
+        elif user.time_format == TimeFormatChoices.HH_MM_AMPM:
+            time_str = local_dt.strftime("%I:%M %p")
+        elif user.time_format == TimeFormatChoices.HH_MM:
+            time_str = local_dt.strftime("%H:%M")
+        elif user.time_format == TimeFormatChoices.HH_MM_SS:
+            time_str = local_dt.strftime("%H:%M:%S")
+        else:
+            time_str = formats.date_format(local_dt, "TIME_FORMAT")
+        
+        return f"at {time_str}"
+    except Exception:
+        # Fallback to default format if there's an error
+        from django.utils import timezone, formats
+        local_dt = timezone.localtime(event.datetime)
+        return f"at {local_dt.strftime('%H:%M')}"
+
+
+@register.filter
 def media_url(media):
     """Return the media URL for both metadata and model object cases."""
     is_dict = isinstance(media, dict)
