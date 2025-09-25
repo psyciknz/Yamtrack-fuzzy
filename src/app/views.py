@@ -18,7 +18,9 @@ from django.utils.timezone import datetime
 from django.views.decorators.http import (require_GET, require_http_methods,
                                           require_POST)
 
-from app import helpers, history_processor
+from app import helpers
+from app import history as history_utils
+from app import history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
 from app.models import (TV, BasicMedia, Item, MediaTypes, Season, Sources,
@@ -843,52 +845,70 @@ def statistics(request):
 
 
 @require_GET
+@login_required
 def history_view(request):
-    """Display user's watch history with filtering options."""
+    """Display user's media consumption history with individual episodes."""
     
     # Get filter parameters
     days_filter = request.GET.get('days', 'all')
     page_number = request.GET.get('page', 1)
     
-    history_qs, media_count = stats.get_user_media(
-        request.user,
-        None,
-        None
-    )
-    print(media_count)
-          
-    # Base queryset for current user's history
-    # Only select related objects that are used in the template to reduce unnecessary joins
-    history_qs = WatchHistory.objects.all()
-    print(history_qs.count()    )
-    history_qs = WatchHistory.objects.filter(user=request.user).select_related(
-        'item', 'episode'
-    ).order_by('-watched_date')
+    # Calculate date range based on filter
+    start_date = None
+    end_date = None
     
-    # Apply date filtering
     if days_filter != 'all':
         try:
             days = int(days_filter)
-            cutoff_date = timezone.now() - timedelta(days=days)
-            history_qs = history_qs.filter(watched_date__gte=cutoff_date)
+            end_date = timezone.now()
+            start_date = end_date - timedelta(days=days)
         except (ValueError, TypeError):
             pass  # Invalid filter, use all results
     
+    # Get consumable media items using the existing stats function
+    consumable_items, media_count = history_utils.get_user_consumable_media(
+        request.user, 
+        start_date, 
+        end_date
+    )
+    
+    # Sort all items by completion date (most recent first)
+    sorted_items = sorted(
+        consumable_items,
+        key=lambda x: (
+            timezone.localtime(x.end_date) if hasattr(x, 'end_date') and x.end_date 
+            else timezone.localtime(x.start_date) if hasattr(x, 'start_date') and x.start_date
+            else timezone.now()
+        ),
+        reverse=True
+    )
+    
     # Calculate statistics
-    total_items = history_qs.count()
-    movie_count = history_qs.filter(item__media_type=MediaTypes.MOVIE.value).count()
-    episode_count = history_qs.filter(item__media_type__in=[MediaTypes.TV.value, MediaTypes.ANIME.value]).count()
+    total_items = len(sorted_items)
+    movie_count = sum(1 for item in sorted_items if item.consumable_type == 'movie')
+    episode_count = sum(1 for item in sorted_items if item.consumable_type == 'episode')
+    anime_count = sum(1 for item in sorted_items if item.consumable_type == 'anime')
+    game_count = sum(1 for item in sorted_items if item.consumable_type == 'game')
+    book_count = sum(1 for item in sorted_items if item.consumable_type == 'book')
     
     # This week's count
-    
     week_ago = timezone.now() - timedelta(days=7)
-    week_count = WatchHistory.objects.filter(
-        user=request.user,
-        watched_date__gte=week_ago
-    ).count()
+    week_count = sum(
+        1 for item in sorted_items 
+        if ((hasattr(item, 'end_date') and item.end_date and item.end_date >= week_ago) or
+            (hasattr(item, 'start_date') and item.start_date and item.start_date >= week_ago))
+    )
+    
+    # This month's count  
+    month_ago = timezone.now() - timedelta(days=30)
+    month_count = sum(
+        1 for item in sorted_items 
+        if ((hasattr(item, 'end_date') and item.end_date and item.end_date >= month_ago) or
+            (hasattr(item, 'start_date') and item.start_date and item.start_date >= month_ago))
+    )
     
     # Paginate results
-    paginator = Paginator(history_qs, 25)  # Show 25 items per page
+    paginator = Paginator(sorted_items, 25)  # Show 25 items per page
     page_obj = paginator.get_page(page_number)
     
     context = {
@@ -899,8 +919,13 @@ def history_view(request):
         'total_items': total_items,
         'movie_count': movie_count,
         'episode_count': episode_count,
+        'anime_count': anime_count,
+        'game_count': game_count,
+        'book_count': book_count,
         'week_count': week_count,
+        'month_count': month_count,
         'current_filter': days_filter,
+        'media_count': media_count,
     }
     
     return render(request, 'app/history.html', context)
