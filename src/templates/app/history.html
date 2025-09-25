@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}History - Yamtrack{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Watch History</h1>
+        
+        <!-- Filter Controls -->
+        <div class="flex items-center space-x-4">
+            <div class="relative">
+                <select id="timeFilter" class="appearance-none bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 pr-8 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="7">Last Week</option>
+                    <option value="30">Last Month</option>
+                    <option value="90">Last 3 Months</option>
+                    <option value="365">Last Year</option>
+                    <option value="all" selected>All Time</option>
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="text-sm text-gray-600 dark:text-gray-400">Total Items</div>
+            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="totalItems">{{ total_items }}</div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="text-sm text-gray-600 dark:text-gray-400">Movies</div>
+            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="movieCount">{{ movie_count }}</div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="text-sm text-gray-600 dark:text-gray-400">TV Episodes</div>
+            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="episodeCount">{{ episode_count }}</div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="text-sm text-gray-600 dark:text-gray-400">This Week</div>
+            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="weekCount">{{ week_count }}</div>
+        </div>
+    </div>
+
+    <!-- History List -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div id="historyList">
+            {% if history_items %}
+                {% for item in history_items %}
+                    <div class="history-item border-b border-gray-200 dark:border-gray-700 last:border-b-0" data-date="{{ item.watched_date|date:'Y-m-d' }}">
+                        <a href="{% url 'media_detail' item.media.media_type item.media.id %}" class="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200">
+                            <!-- Poster -->
+                            <div class="flex-shrink-0 mr-4">
+                                <img src="{{ item.media.poster_url|default:'/static/img/no-poster.png' }}" 
+                                     alt="{{ item.media.title }}" 
+                                     class="w-16 h-24 object-cover rounded-lg shadow-sm">
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="flex-grow min-w-0">
+                                <div class="flex items-start justify-between">
+                                    <div class="min-w-0 flex-grow">
+                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                                            {{ item.media.title }}
+                                        </h3>
+                                        
+                                        <!-- Media Type & Episode Info -->
+                                        <div class="flex items-center mt-1 space-x-2">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                {% if item.media.media_type == 'movie' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
+                                                {% elif item.media.media_type == 'tv' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300
+                                                {% elif item.media.media_type == 'anime' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300
+                                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300{% endif %}">
+                                                {{ item.media.get_media_type_display }}
+                                            </span>
+                                            
+                                            {% if item.episode %}
+                                                <span class="text-sm text-gray-600 dark:text-gray-400">
+                                                    S{{ item.episode.season_number|stringformat:"02d" }}E{{ item.episode.episode_number|stringformat:"02d" }}
+                                                    {% if item.episode.title %} - {{ item.episode.title }}{% endif %}
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <!-- Additional Info -->
+                                        {% if item.media.year %}
+                                            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                {{ item.media.year }}
+                                                {% if item.media.runtime %}
+                                                    • {{ item.media.runtime }} min
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <!-- Date & Time -->
+                                    <div class="flex-shrink-0 text-right ml-4">
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            {{ item.watched_date|date:"M d, Y" }}
+                                        </div>
+                                        <div class="text-sm text-gray-500 dark:text-gray-400">
+                                            {{ item.watched_date|time:"g:i A" }}
+                                        </div>
+                                        {% if item.rewatch %}
+                                            <div class="inline-flex items-center mt-1 px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">
+                                                Rewatch
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="flex flex-col items-center justify-center py-12">
+                    <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-1">No history found</h3>
+                    <p class="text-gray-500 dark:text-gray-400">Start watching some media to see your history here.</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="hidden flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+        <div class="flex items-center justify-between mt-6">
+            <div class="text-sm text-gray-700 dark:text-gray-300">
+                Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ paginator.count }} results
+            </div>
+            
+            <div class="flex items-center space-x-1">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                        First
+                    </a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                        Previous
+                    </a>
+                {% endif %}
+                
+                <span class="px-3 py-2 text-sm font-medium text-gray-700 bg-blue-50 border border-gray-300 dark:bg-blue-900 dark:text-white dark:border-gray-700">
+                    {{ page_obj.number }}
+                </span>
+                
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                        Next
+                    </a>
+                    <a href="?page={{ paginator.num_pages }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                        Last
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const timeFilter = document.getElementById('timeFilter');
+    const historyList = document.getElementById('historyList');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    
+    timeFilter.addEventListener('change', function() {
+        const days = this.value;
+        const url = new URL(window.location);
+        
+        if (days === 'all') {
+            url.searchParams.delete('days');
+        } else {
+            url.searchParams.set('days', days);
+        }
+        url.searchParams.delete('page'); // Reset to first page
+        
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
+        historyList.style.opacity = '0.5';
+        
+        // Navigate to filtered URL
+        window.location.href = url.toString();
+    });
+    
+    // Set the current filter value from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentDays = urlParams.get('days') || 'all';
+    timeFilter.value = currentDays;
+});
+</script>
+{% endblock %}

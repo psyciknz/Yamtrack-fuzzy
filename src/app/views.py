@@ -13,12 +13,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import (require_GET, require_http_methods,
+                                          require_POST)
 
 from app import helpers, history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
-from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
+from app.models import (TV, BasicMedia, Item, MediaTypes, Season, Sources,
+                        Status)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
@@ -836,3 +838,66 @@ def statistics(request):
     }
 
     return render(request, "app/statistics.html", context)
+
+from datetime import timedelta
+
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
+from django.shortcuts import render
+from django.utils import timezone
+
+from .models import Episode, Media, WatchHistory
+
+
+@login_required
+def history_view(request):
+    """Display user's watch history with filtering options."""
+    
+    # Get filter parameters
+    days_filter = request.GET.get('days', 'all')
+    page_number = request.GET.get('page', 1)
+    
+    # Base queryset for current user's history
+    history_qs = WatchHistory.objects.filter(user=request.user).select_related(
+        'media', 'episode', 'episode__season'
+    ).order_by('-watched_date')
+    
+    # Apply date filtering
+    if days_filter != 'all':
+        try:
+            days = int(days_filter)
+            cutoff_date = timezone.now() - timedelta(days=days)
+            history_qs = history_qs.filter(watched_date__gte=cutoff_date)
+        except (ValueError, TypeError):
+            pass  # Invalid filter, use all results
+    
+    # Calculate statistics
+    total_items = history_qs.count()
+    movie_count = history_qs.filter(media__media_type='movie').count()
+    episode_count = history_qs.filter(media__media_type__in=['tv', 'anime']).count()
+    
+    # This week's count
+    week_ago = timezone.now() - timedelta(days=7)
+    week_count = WatchHistory.objects.filter(
+        user=request.user,
+        watched_date__gte=week_ago
+    ).count()
+    
+    # Paginate results
+    paginator = Paginator(history_qs, 25)  # Show 25 items per page
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'history_items': page_obj,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
+        'total_items': total_items,
+        'movie_count': movie_count,
+        'episode_count': episode_count,
+        'week_count': week_count,
+        'current_filter': days_filter,
+    }
+    
+    return render(request, 'app/history.html', context)

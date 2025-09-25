@@ -108,6 +108,15 @@
                   </a>
                 </li>
 
+                {% url 'history' as history_url %}
+                <li>
+                  <a href="{{ history_url }}"
+                    class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
+                    {% icon 'history' is_active=request.path|str_equals:history_url %}
+                    <span>History</span>
+                  </a>
+                </li>
+
                 {% url 'lists' as lists_url %}
                 <li>
                   <a href="{{ lists_url }}"

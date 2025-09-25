@@ -2,29 +2,18 @@ import logging
 
 from django.apps import apps
 from django.conf import settings
-from django.core.validators import (
-    DecimalValidator,
-    MaxValueValidator,
-    MinValueValidator,
-)
+from django.core.validators import (DecimalValidator, MaxValueValidator,
+                                    MinValueValidator)
 from django.db import models
-from django.db.models import (
-    CheckConstraint,
-    Count,
-    F,
-    IntegerField,
-    Max,
-    Prefetch,
-    Q,
-    UniqueConstraint,
-    Window,
-)
+from django.db.models import (CheckConstraint, Count, F, IntegerField, Max,
+                              Prefetch, Q, UniqueConstraint, Window)
 from django.db.models.functions import Cast, RowNumber
 from django.utils import timezone
 from model_utils import FieldTracker
 from model_utils.fields import MonitorField
 from simple_history.models import HistoricalRecords
-from simple_history.utils import bulk_create_with_history, bulk_update_with_history
+from simple_history.utils import (bulk_create_with_history,
+                                  bulk_update_with_history)
 
 import app
 import events
@@ -853,6 +842,12 @@ class Media(models.Model):
         self.save()
         logger.info("Decreased progress of %s to %s", self, self.progress)
 
+    @property
+    def poster_url(self):
+        """Return the poster URL or None if not available."""
+        if hasattr(self, 'poster_path') and self.poster_path:
+            return f"https://image.tmdb.org/t/p/w500{self.poster_path}"
+        return None
 
 class BasicMedia(Media):
     """Model for basic media types."""
@@ -1571,3 +1566,29 @@ class Comic(Media):
     """Model for comics."""
 
     tracker = FieldTracker()
+
+
+class WatchHistory(models.Model):
+    """Track when users watch media items."""
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='watch_history')
+    media = models.ForeignKey('Media', on_delete=models.CASCADE, related_name='watch_history')
+    episode = models.ForeignKey('Episode', on_delete=models.CASCADE, null=True, blank=True, 
+                               help_text="Specific episode watched (for TV shows)")
+    watched_date = models.DateTimeField(default=timezone.now)
+    rewatch = models.BooleanField(default=False, help_text="True if this is a rewatch")
+    
+    # Optional: track watch progress/duration
+    progress_minutes = models.PositiveIntegerField(null=True, blank=True)
+    completed = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['-watched_date']
+        indexes = [
+            models.Index(fields=['user', '-watched_date']),
+            models.Index(fields=['media', '-watched_date']),
+        ]
+    
+    def __str__(self):
+        if self.episode:
+            return f"{self.user.username} watched {self.media.title} S{self.episode.season_number:02d}E{self.episode.episode_number:02d} on {self.watched_date.date()}"
+        return f"{self.user.username} watched {self.media.title} on {self.watched_date.date()}"
