@@ -29,13 +29,6 @@ class EpisodeAdmin(admin.ModelAdmin):
     search_fields = ["item__title", "related_season__item__title"]
     list_display = ["__str__", "end_date"]
 
-
-class WatchHistoryAdmin(admin.ModelAdmin):
-    list_display = ['user', 'item', 'watched_date', 'rewatch']
-    list_filter = ['watched_date', 'rewatch', 'item__media_type']
-    search_fields = ['user__username', 'item__title']
-    ordering = ['-watched_date']
-
 class MediaAdmin(admin.ModelAdmin):
     """Custom admin for regular media model with search and filter options."""
 
@@ -43,12 +36,9 @@ class MediaAdmin(admin.ModelAdmin):
     list_display = ["__str__", "status", "score", "user"]
     list_filter = ["status"]
     
-    
 # Register models with custom admin classes
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Episode, EpisodeAdmin)
-
-
 
 # Auto-register remaining models
 app_models = apps.get_app_config("app").get_models()

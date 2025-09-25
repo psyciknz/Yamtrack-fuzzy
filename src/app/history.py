@@ -1,33 +1,22 @@
 import logging
 from collections import defaultdict
-from datetime import timedelta
 
-from django.apps import apps
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.db.models import Prefetch, Q
-from django.http import HttpResponse
-from django.shortcuts import render
 from django.utils import timezone
-from django.views.decorators.http import require_GET
 
 from app import statistics as stats
-from app.models import TV, BasicMedia, Episode, MediaTypes, Season
-from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
-from .models import Episode, Item
+
 
 
 def get_user_consumable_media(user, start_date=None, end_date=None):
     """
     Get all individual consumable media items (movies, episodes, etc.) for a user.
-    Uses the existing get_user_media function but focuses on individual consumable items.
     """
+    
     # Use the existing statistics function to get user media
     user_media, media_count = stats.get_user_media(user, start_date, end_date)
-    
     consumable_items = []
     
     # Process each media type from the existing function
