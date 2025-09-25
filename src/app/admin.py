@@ -4,10 +4,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.admin.sites import AlreadyRegistered
 
-from app.models import (
-    Episode,
-    Item,
-)
+from app.models import Episode, Item, WatchHistory
 
 
 # Custom ModelAdmin classes with search functionality
@@ -33,17 +30,24 @@ class EpisodeAdmin(admin.ModelAdmin):
     list_display = ["__str__", "end_date"]
 
 
+class WatchHistoryAdmin(admin.ModelAdmin):
+    list_display = ['user', 'item', 'watched_date', 'rewatch']
+    list_filter = ['watched_date', 'rewatch', 'item__media_type']
+    search_fields = ['user__username', 'item__title']
+    ordering = ['-watched_date']
+
 class MediaAdmin(admin.ModelAdmin):
     """Custom admin for regular media model with search and filter options."""
 
     search_fields = ["item__title", "user__username", "notes"]
     list_display = ["__str__", "status", "score", "user"]
     list_filter = ["status"]
-
-
+    
+    
 # Register models with custom admin classes
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Episode, EpisodeAdmin)
+admin.site.register(WatchHistory, WatchHistoryAdmin)    
 
 
 # Auto-register remaining models
@@ -56,3 +60,4 @@ for model in app_models:
     ):
         with contextlib.suppress(AlreadyRegistered):
             admin.site.register(model, MediaAdmin)
+

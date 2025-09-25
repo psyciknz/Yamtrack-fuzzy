@@ -1,12 +1,14 @@
 import logging
+from datetime import timedelta
 
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import prefetch_related_objects
+from django.db.models import Count, Q, prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -20,7 +22,7 @@ from app import helpers, history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
 from app.models import (TV, BasicMedia, Item, MediaTypes, Season, Sources,
-                        Status)
+                        Status, WatchHistory)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
@@ -839,18 +841,8 @@ def statistics(request):
 
     return render(request, "app/statistics.html", context)
 
-from datetime import timedelta
 
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.db.models import Count, Q
-from django.shortcuts import render
-from django.utils import timezone
-
-from .models import Episode, Media, WatchHistory
-
-
-@login_required
+@require_GET
 def history_view(request):
     """Display user's watch history with filtering options."""
     
@@ -858,9 +850,19 @@ def history_view(request):
     days_filter = request.GET.get('days', 'all')
     page_number = request.GET.get('page', 1)
     
+    history_qs, media_count = stats.get_user_media(
+        request.user,
+        None,
+        None
+    )
+    print(media_count)
+          
     # Base queryset for current user's history
+    # Only select related objects that are used in the template to reduce unnecessary joins
+    history_qs = WatchHistory.objects.all()
+    print(history_qs.count()    )
     history_qs = WatchHistory.objects.filter(user=request.user).select_related(
-        'media', 'episode', 'episode__season'
+        'item', 'episode'
     ).order_by('-watched_date')
     
     # Apply date filtering
@@ -874,10 +876,11 @@ def history_view(request):
     
     # Calculate statistics
     total_items = history_qs.count()
-    movie_count = history_qs.filter(media__media_type='movie').count()
-    episode_count = history_qs.filter(media__media_type__in=['tv', 'anime']).count()
+    movie_count = history_qs.filter(item__media_type=MediaTypes.MOVIE.value).count()
+    episode_count = history_qs.filter(item__media_type__in=[MediaTypes.TV.value, MediaTypes.ANIME.value]).count()
     
     # This week's count
+    
     week_ago = timezone.now() - timedelta(days=7)
     week_count = WatchHistory.objects.filter(
         user=request.user,

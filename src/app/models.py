@@ -842,6 +842,23 @@ class Media(models.Model):
         self.save()
         logger.info("Decreased progress of %s to %s", self, self.progress)
 
+    # Add this method to your existing Media class (the abstract one)
+    # Since Media is abstract, add this to the Media class around line 394
+    def get_media_type_display(self):
+        """Return a nice display name for media type."""
+        type_mapping = {
+            MediaTypes.MOVIE.value: 'Movie',
+            MediaTypes.TV.value: 'TV Show',
+            MediaTypes.SEASON.value: 'Season',
+            MediaTypes.EPISODE.value: 'Episode',
+            MediaTypes.ANIME.value: 'Anime',
+            MediaTypes.MANGA.value: 'Manga',
+            MediaTypes.BOOK.value: 'Book',
+            MediaTypes.GAME.value: 'Game',
+            MediaTypes.COMIC.value: 'Comic',
+        }
+        return type_mapping.get(self.item.media_type, self.item.media_type.title())
+
     @property
     def poster_url(self):
         """Return the poster URL or None if not available."""
@@ -1570,9 +1587,9 @@ class Comic(Media):
 
 class WatchHistory(models.Model):
     """Track when users watch media items."""
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='watch_history')
-    media = models.ForeignKey('Media', on_delete=models.CASCADE, related_name='watch_history')
-    episode = models.ForeignKey('Episode', on_delete=models.CASCADE, null=True, blank=True, 
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='watch_history')
+    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, null=True, blank=True, 
                                help_text="Specific episode watched (for TV shows)")
     watched_date = models.DateTimeField(default=timezone.now)
     rewatch = models.BooleanField(default=False, help_text="True if this is a rewatch")
@@ -1585,10 +1602,17 @@ class WatchHistory(models.Model):
         ordering = ['-watched_date']
         indexes = [
             models.Index(fields=['user', '-watched_date']),
-            models.Index(fields=['media', '-watched_date']),
+            models.Index(fields=['item', '-watched_date']),
         ]
     
     def __str__(self):
         if self.episode:
-            return f"{self.user.username} watched {self.media.title} S{self.episode.season_number:02d}E{self.episode.episode_number:02d} on {self.watched_date.date()}"
-        return f"{self.user.username} watched {self.media.title} on {self.watched_date.date()}"
+            return f"{self.user.username} watched {self.item.title} S{self.episode.item.season_number:02d}E{self.episode.item.episode_number:02d} on {self.watched_date.date()}"
+        return f"{self.user.username} watched {self.item.title} on {self.watched_date.date()}"
+
+
+
+@property
+def poster_url(self):
+    """Return the poster URL or None if not available."""
+    return self.item.image if self.item.image else None

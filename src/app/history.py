@@ -1,17 +1,20 @@
-from .models import WatchHistory
+from .models import Episode, Item, WatchHistory
 
 
-def record_watch_history(user, media, episode=None, rewatch=False):
+def record_watch_history(user, item, episode=None, rewatch=False, progress_minutes=None):
     """Record a watch history entry."""
     return WatchHistory.objects.create(
         user=user,
-        media=media,
+        item=item,
         episode=episode,
-        rewatch=rewatch
+        rewatch=rewatch,
+        progress_minutes=progress_minutes
     )
 
 def get_user_watch_stats(user, days=None):
     """Get user's watch statistics."""
+    temp_qs = WatchHistory.objects.all()
+    print(temp_qs.count())
     qs = WatchHistory.objects.filter(user=user)
     
     if days:
@@ -23,7 +26,7 @@ def get_user_watch_stats(user, days=None):
     
     return {
         'total': qs.count(),
-        'movies': qs.filter(media__media_type='movie').count(),
-        'episodes': qs.filter(media__media_type__in=['tv', 'anime']).count(),
-        'unique_media': qs.values('media').distinct().count(),
+        'movies': qs.filter(item__media_type='movie').count(),
+        'episodes': qs.filter(item__media_type__in=['tv', 'anime']).count(),
+        'unique_items': qs.values('item').distinct().count(),
     }

@@ -4,14 +4,14 @@
 {% block title %}History - Yamtrack{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
+<div class="max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Watch History</h1>
+        <h1 class="text-3xl font-bold text-gray-100">Watch History</h1>
         
         <!-- Filter Controls -->
         <div class="flex items-center space-x-4">
             <div class="relative">
-                <select id="timeFilter" class="appearance-none bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 pr-8 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <select id="timeFilter" class="appearance-none bg-[#272c31] border border-[#2c3136] rounded-lg px-4 py-2 pr-8 text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]">
                     <option value="7">Last Week</option>
                     <option value="30">Last Month</option>
                     <option value="90">Last 3 Months</option>
@@ -19,7 +19,7 @@
                     <option value="all" selected>All Time</option>
                 </select>
                 <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                     </svg>
                 </div>
@@ -29,85 +29,84 @@
 
     <!-- History Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <div class="text-sm text-gray-600 dark:text-gray-400">Total Items</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="totalItems">{{ total_items }}</div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Total Items</div>
+            <div class="text-2xl font-bold text-gray-100" id="totalItems">{{ total_items }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <div class="text-sm text-gray-600 dark:text-gray-400">Movies</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="movieCount">{{ movie_count }}</div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Movies</div>
+            <div class="text-2xl font-bold text-gray-100" id="movieCount">{{ movie_count }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <div class="text-sm text-gray-600 dark:text-gray-400">TV Episodes</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="episodeCount">{{ episode_count }}</div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">TV Episodes</div>
+            <div class="text-2xl font-bold text-gray-100" id="episodeCount">{{ episode_count }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <div class="text-sm text-gray-600 dark:text-gray-400">This Week</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="weekCount">{{ week_count }}</div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">This Week</div>
+            <div class="text-2xl font-bold text-gray-100" id="weekCount">{{ week_count }}</div>
         </div>
     </div>
 
     <!-- History List -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] overflow-hidden">
         <div id="historyList">
             {% if history_items %}
                 {% for item in history_items %}
-                    <div class="history-item border-b border-gray-200 dark:border-gray-700 last:border-b-0" data-date="{{ item.watched_date|date:'Y-m-d' }}">
-                        <a href="{% url 'media_detail' item.media.media_type item.media.id %}" class="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200">
+                    <div class="history-item border-b border-[#2c3136] last:border-b-0" data-date="{{ item.watched_date|date:'Y-m-d' }}">
+                        <a href="{% url 'media_detail' item.item.media_type item.item.id %}" class="flex items-center p-4 hover:bg-[#23272b] transition-colors duration-200">
                             <!-- Poster -->
                             <div class="flex-shrink-0 mr-4">
-                                <img src="{{ item.media.poster_url|default:'/static/img/no-poster.png' }}" 
-                                     alt="{{ item.media.title }}" 
-                                     class="w-16 h-24 object-cover rounded-lg shadow-sm">
+                                <img src="{{ item.item.image|default:'/static/img/no-poster.png' }}" 
+                                     alt="{{ item.item.title }}" 
+                                     class="w-16 h-24 object-cover rounded-lg shadow-sm border border-[#2c3136]">
                             </div>
                             
                             <!-- Content -->
                             <div class="flex-grow min-w-0">
                                 <div class="flex items-start justify-between">
                                     <div class="min-w-0 flex-grow">
-                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white truncate">
-                                            {{ item.media.title }}
+                                        <h3 class="text-lg font-semibold text-gray-100 truncate">
+                                            {{ item.item.title }}
                                         </h3>
                                         
                                         <!-- Media Type & Episode Info -->
                                         <div class="flex items-center mt-1 space-x-2">
                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {% if item.media.media_type == 'movie' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
-                                                {% elif item.media.media_type == 'tv' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300
-                                                {% elif item.media.media_type == 'anime' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300
-                                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300{% endif %}">
-                                                {{ item.media.get_media_type_display }}
+                                                {% if item.item.media_type == 'movie' %}bg-[#1e3a8a] text-blue-300
+                                                {% elif item.item.media_type == 'tv' %}bg-[#166534] text-green-300
+                                                {% elif item.item.media_type == 'anime' %}bg-[#7c2d12] text-purple-300
+                                                {% else %}bg-[#374151] text-gray-300{% endif %}">
+                                                {{ item.item.get_media_type_display }}
                                             </span>
                                             
                                             {% if item.episode %}
-                                                <span class="text-sm text-gray-600 dark:text-gray-400">
-                                                    S{{ item.episode.season_number|stringformat:"02d" }}E{{ item.episode.episode_number|stringformat:"02d" }}
-                                                    {% if item.episode.title %} - {{ item.episode.title }}{% endif %}
+                                                <span class="text-sm text-gray-400">
+                                                    S{{ item.episode.item.season_number|stringformat:"02d" }}E{{ item.episode.item.episode_number|stringformat:"02d" }}
+                                                    {% if item.episode.item.title and item.episode.item.title != item.item.title %} - {{ item.episode.item.title }}{% endif %}
                                                 </span>
                                             {% endif %}
                                         </div>
                                         
                                         <!-- Additional Info -->
-                                        {% if item.media.year %}
-                                            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                {{ item.media.year }}
-                                                {% if item.media.runtime %}
-                                                    • {{ item.media.runtime }} min
-                                                {% endif %}
-                                            </div>
-                                        {% endif %}
+                                        <div class="text-sm text-gray-500 mt-1">
+                                            {% if item.item.media_type == 'movie' and item.progress_minutes %}
+                                                {{ item.progress_minutes }} minutes watched
+                                            {% elif item.episode %}
+                                                Episode watched
+                                            {% endif %}
+                                        </div>
                                     </div>
                                     
                                     <!-- Date & Time -->
                                     <div class="flex-shrink-0 text-right ml-4">
-                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                        <div class="text-sm font-medium text-gray-100">
                                             {{ item.watched_date|date:"M d, Y" }}
                                         </div>
-                                        <div class="text-sm text-gray-500 dark:text-gray-400">
+                                        <div class="text-sm text-gray-400">
                                             {{ item.watched_date|time:"g:i A" }}
                                         </div>
                                         {% if item.rewatch %}
-                                            <div class="inline-flex items-center mt-1 px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">
+                                            <div class="inline-flex items-center mt-1 px-2 py-1 rounded-full text-xs font-medium bg-[#92400e] text-orange-300">
                                                 Rewatch
                                             </div>
                                         {% endif %}
@@ -122,48 +121,48 @@
                     <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-1">No history found</h3>
-                    <p class="text-gray-500 dark:text-gray-400">Start watching some media to see your history here.</p>
+                    <h3 class="text-lg font-medium text-gray-100 mb-1">No history found</h3>
+                    <p class="text-gray-400">Start watching some media to see your history here.</p>
                 </div>
             {% endif %}
         </div>
         
         <!-- Loading indicator -->
         <div id="loadingIndicator" class="hidden flex items-center justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4a9eff]"></div>
         </div>
     </div>
 
     <!-- Pagination -->
     {% if is_paginated %}
         <div class="flex items-center justify-between mt-6">
-            <div class="text-sm text-gray-700 dark:text-gray-300">
+            <div class="text-sm text-gray-300">
                 Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ paginator.count }} results
             </div>
             
             <div class="flex items-center space-x-1">
                 {% if page_obj.has_previous %}
                     <a href="?page=1{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
-                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] rounded-l-lg hover:bg-[#2a2e33] hover:text-gray-300">
                         First
                     </a>
                     <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
-                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] hover:bg-[#2a2e33] hover:text-gray-300">
                         Previous
                     </a>
                 {% endif %}
                 
-                <span class="px-3 py-2 text-sm font-medium text-gray-700 bg-blue-50 border border-gray-300 dark:bg-blue-900 dark:text-white dark:border-gray-700">
+                <span class="px-3 py-2 text-sm font-medium text-gray-100 bg-[#4a9eff] border border-[#4a9eff]">
                     {{ page_obj.number }}
                 </span>
                 
                 {% if page_obj.has_next %}
                     <a href="?page={{ page_obj.next_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
-                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] hover:bg-[#2a2e33] hover:text-gray-300">
                         Next
                     </a>
                     <a href="?page={{ paginator.num_pages }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
-                       class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white">
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] rounded-r-lg hover:bg-[#2a2e33] hover:text-gray-300">
                         Last
                     </a>
                 {% endif %}
