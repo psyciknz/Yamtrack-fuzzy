@@ -24,7 +24,7 @@ from app import history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
 from app.models import (TV, BasicMedia, Item, MediaTypes, Season, Sources,
-                        Status, WatchHistory)
+                        Status)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices

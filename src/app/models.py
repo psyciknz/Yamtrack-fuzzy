@@ -1584,35 +1584,3 @@ class Comic(Media):
 
     tracker = FieldTracker()
 
-
-class WatchHistory(models.Model):
-    """Track when users watch media items."""
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='watch_history')
-    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, null=True, blank=True, 
-                               help_text="Specific episode watched (for TV shows)")
-    watched_date = models.DateTimeField(default=timezone.now)
-    rewatch = models.BooleanField(default=False, help_text="True if this is a rewatch")
-    
-    # Optional: track watch progress/duration
-    progress_minutes = models.PositiveIntegerField(null=True, blank=True)
-    completed = models.BooleanField(default=True)
-    
-    class Meta:
-        ordering = ['-watched_date']
-        indexes = [
-            models.Index(fields=['user', '-watched_date']),
-            models.Index(fields=['item', '-watched_date']),
-        ]
-    
-    def __str__(self):
-        if self.episode:
-            return f"{self.user.username} watched {self.item.title} S{self.episode.item.season_number:02d}E{self.episode.item.episode_number:02d} on {self.watched_date.date()}"
-        return f"{self.user.username} watched {self.item.title} on {self.watched_date.date()}"
-
-
-
-@property
-def poster_url(self):
-    """Return the poster URL or None if not available."""
-    return self.item.image if self.item.image else None

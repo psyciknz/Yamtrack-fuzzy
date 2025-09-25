@@ -17,7 +17,7 @@ from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
-from .models import Episode, Item, WatchHistory
+from .models import Episode, Item
 
 
 def record_watch_history(user, item, episode=None, rewatch=False, progress_minutes=None):

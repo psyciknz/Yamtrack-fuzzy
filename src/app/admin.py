@@ -4,7 +4,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.admin.sites import AlreadyRegistered
 
-from app.models import Episode, Item, WatchHistory
+from app.models import Episode, Item
 
 
 # Custom ModelAdmin classes with search functionality
@@ -47,7 +47,7 @@ class MediaAdmin(admin.ModelAdmin):
 # Register models with custom admin classes
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Episode, EpisodeAdmin)
-admin.site.register(WatchHistory, WatchHistoryAdmin)    
+
 
 
 # Auto-register remaining models
