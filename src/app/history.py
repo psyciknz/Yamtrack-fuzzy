@@ -31,7 +31,6 @@ def get_user_consumable_media(user, start_date=None, end_date=None):
                         if episode.item.title and episode.item.title != tv_show.item.title:
                             episode.display_title += f": {episode.item.title}"
                         consumable_items.append(episode)
-        
         elif media_type == "season":
             # For seasons, we want the individual episodes
             for season in queryset:
@@ -42,7 +41,6 @@ def get_user_consumable_media(user, start_date=None, end_date=None):
                     if episode.item.title and episode.item.title != tv_title:
                         episode.display_title += f": {episode.item.title}"
                     consumable_items.append(episode)
-        
         else:
             # For other media types (movies, games, books, etc.), add them directly
             for item in queryset:
@@ -77,19 +75,17 @@ def get_user_consumable_media(user, start_date=None, end_date=None):
 def get_consumable_media_timeline(consumable_items):
     """Build a timeline of consumable media organized by date."""
     timeline = defaultdict(list)
-    
     for item in consumable_items:
         # Determine the date to use for timeline placement
         date_to_use = None
         
-        if hasattr(item, 'end_date') and item.end_date:
+        if hasattr(item, "end_date") and item.end_date:
             date_to_use = timezone.localdate(item.end_date)
-        elif hasattr(item, 'start_date') and item.start_date:
+        elif hasattr(item, "start_date") and item.start_date:
             date_to_use = timezone.localdate(item.start_date)
         
         if date_to_use:
             timeline[date_to_use].append(item)
-    
     # Sort timeline by date (most recent first) and items within each date
     sorted_timeline = {}
     for date in sorted(timeline.keys(), reverse=True):
@@ -97,12 +93,11 @@ def get_consumable_media_timeline(consumable_items):
         sorted_items = sorted(
             timeline[date],
             key=lambda x: (
-                timezone.localtime(x.end_date) if hasattr(x, 'end_date') and x.end_date 
-                else timezone.localtime(x.start_date) if hasattr(x, 'start_date') and x.start_date
+                timezone.localtime(x.end_date) if hasattr(x, "end_date") and x.end_date 
+                else timezone.localtime(x.start_date) if hasattr(x, "start_date") and x.start_date
                 else timezone.now()
             ),
-            reverse=True
+            reverse=True,
         )
         sorted_timeline[date] = sorted_items
-    
     return sorted_timeline

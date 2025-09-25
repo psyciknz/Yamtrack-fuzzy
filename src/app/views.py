@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Count, Q, prefetch_related_objects
+from django.db.models import prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -848,7 +848,6 @@ def statistics(request):
 @login_required
 def history_view(request):
     """Display user's media consumption history with individual episodes."""
-    
     # Get filter parameters
     days_filter = request.GET.get('days', 'all')
     page_number = request.GET.get('page', 1)
@@ -856,7 +855,6 @@ def history_view(request):
     # Calculate date range based on filter
     start_date = None
     end_date = None
-    
     if days_filter != 'all':
         try:
             days = int(days_filter)
@@ -869,9 +867,8 @@ def history_view(request):
     consumable_items, media_count = history_utils.get_user_consumable_media(
         request.user, 
         start_date, 
-        end_date
+        end_date,
     )
-    
     # Sort all items by completion date (most recent first)
     sorted_items = sorted(
         consumable_items,
@@ -880,9 +877,8 @@ def history_view(request):
             else timezone.localtime(x.start_date) if hasattr(x, 'start_date') and x.start_date
             else timezone.now()
         ),
-        reverse=True
+        reverse=True,
     )
-    
     # Calculate statistics
     total_items = len(sorted_items)
     movie_count = sum(1 for item in sorted_items if item.consumable_type == 'movie')
