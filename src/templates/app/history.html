@@ -28,7 +28,7 @@
     </div>
 
     <!-- History Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
             <div class="text-sm text-gray-400">Total Items</div>
             <div class="text-2xl font-bold text-gray-100" id="totalItems">{{ total_items }}</div>
@@ -38,8 +38,12 @@
             <div class="text-2xl font-bold text-gray-100" id="movieCount">{{ movie_count }}</div>
         </div>
         <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
-            <div class="text-sm text-gray-400">TV Episodes</div>
+            <div class="text-sm text-gray-400">Episodes</div>
             <div class="text-2xl font-bold text-gray-100" id="episodeCount">{{ episode_count }}</div>
+        </div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Games</div>
+            <div class="text-2xl font-bold text-gray-100" id="gameCount">{{ game_count|default:0 }}</div>
         </div>
         <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
             <div class="text-sm text-gray-400">This Week</div>
@@ -52,12 +56,13 @@
         <div id="historyList">
             {% if history_items %}
                 {% for item in history_items %}
-                    <div class="history-item border-b border-[#2c3136] last:border-b-0" data-date="{{ item.watched_date|date:'Y-m-d' }}">
-                        <a href="{% url 'media_detail' item.item.media_type item.item.id %}" class="flex items-center p-4 hover:bg-[#23272b] transition-colors duration-200">
+                    <div class="history-item border-b border-[#2c3136] last:border-b-0" 
+                         data-date="{% if item.end_date %}{{ item.end_date|date:'Y-m-d' }}{% elif item.start_date %}{{ item.start_date|date:'Y-m-d' }}{% endif %}">
+                        <div class="flex items-center p-4 hover:bg-[#23272b] transition-colors duration-200">
                             <!-- Poster -->
                             <div class="flex-shrink-0 mr-4">
                                 <img src="{{ item.item.image|default:'/static/img/no-poster.png' }}" 
-                                     alt="{{ item.item.title }}" 
+                                     alt="{{ item.display_title }}" 
                                      class="w-16 h-24 object-cover rounded-lg shadow-sm border border-[#2c3136]">
                             </div>
                             
@@ -66,54 +71,76 @@
                                 <div class="flex items-start justify-between">
                                     <div class="min-w-0 flex-grow">
                                         <h3 class="text-lg font-semibold text-gray-100 truncate">
-                                            {{ item.item.title }}
+                                            {{ item.display_title }}
                                         </h3>
                                         
-                                        <!-- Media Type & Episode Info -->
+                                        <!-- Media Type & Status Info -->
                                         <div class="flex items-center mt-1 space-x-2">
                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {% if item.item.media_type == 'movie' %}bg-[#1e3a8a] text-blue-300
-                                                {% elif item.item.media_type == 'tv' %}bg-[#166534] text-green-300
-                                                {% elif item.item.media_type == 'anime' %}bg-[#7c2d12] text-purple-300
+                                                {% if item.consumable_type == 'movie' %}bg-[#1e3a8a] text-blue-300
+                                                {% elif item.consumable_type == 'episode' %}bg-[#166534] text-green-300
+                                                {% elif item.consumable_type == 'anime' %}bg-[#7c2d12] text-purple-300
+                                                {% elif item.consumable_type == 'game' %}bg-[#7c3aed] text-purple-300
+                                                {% elif item.consumable_type == 'book' %}bg-[#92400e] text-orange-300
                                                 {% else %}bg-[#374151] text-gray-300{% endif %}">
-                                                {{ item.item.get_media_type_display }}
+                                                {{ item.consumable_type|title }}
                                             </span>
                                             
-                                            {% if item.episode %}
-                                                <span class="text-sm text-gray-400">
-                                                    S{{ item.episode.item.season_number|stringformat:"02d" }}E{{ item.episode.item.episode_number|stringformat:"02d" }}
-                                                    {% if item.episode.item.title and item.episode.item.title != item.item.title %} - {{ item.episode.item.title }}{% endif %}
+                                            {% if item.status %}
+                                                <span class="text-xs px-2 py-1 rounded-full
+                                                    {% if item.status == 'completed' %}bg-green-900 text-green-300
+                                                    {% elif item.status == 'in_progress' %}bg-blue-900 text-blue-300
+                                                    {% elif item.status == 'paused' %}bg-yellow-900 text-yellow-300
+                                                    {% elif item.status == 'dropped' %}bg-red-900 text-red-300
+                                                    {% else %}bg-gray-900 text-gray-300{% endif %}">
+                                                    {{ item.get_status_display|default:item.status|title }}
                                                 </span>
                                             {% endif %}
                                         </div>
                                         
                                         <!-- Additional Info -->
                                         <div class="text-sm text-gray-500 mt-1">
-                                            {% if item.item.media_type == 'movie' and item.progress_minutes %}
-                                                {{ item.progress_minutes }} minutes watched
-                                            {% elif item.episode %}
-                                                Episode watched
+                                            {% if item.progress %}
+                                                Progress: {{ item.progress }}
+                                                {% if item.consumable_type == 'episode' %} episodes
+                                                {% elif item.consumable_type == 'game' %} hours
+                                                {% elif item.consumable_type == 'book' %} pages
+                                                {% endif %}
+                                            {% endif %}
+                                            
+                                            {% if item.score %}
+                                                <span class="ml-2">• Score: {{ item.score }}/10</span>
                                             {% endif %}
                                         </div>
                                     </div>
                                     
                                     <!-- Date & Time -->
                                     <div class="flex-shrink-0 text-right ml-4">
-                                        <div class="text-sm font-medium text-gray-100">
-                                            {{ item.watched_date|date:"M d, Y" }}
-                                        </div>
-                                        <div class="text-sm text-gray-400">
-                                            {{ item.watched_date|time:"g:i A" }}
-                                        </div>
-                                        {% if item.rewatch %}
-                                            <div class="inline-flex items-center mt-1 px-2 py-1 rounded-full text-xs font-medium bg-[#92400e] text-orange-300">
-                                                Rewatch
+                                        {% if item.end_date %}
+                                            <div class="text-sm font-medium text-gray-100">
+                                                {{ item.end_date|date:"M d, Y" }}
+                                            </div>
+                                            <div class="text-sm text-gray-400">
+                                                Completed
+                                            </div>
+                                        {% elif item.start_date %}
+                                            <div class="text-sm font-medium text-gray-100">
+                                                {{ item.start_date|date:"M d, Y" }}
+                                            </div>
+                                            <div class="text-sm text-gray-400">
+                                                Started
+                                            </div>
+                                        {% endif %}
+                                        
+                                        {% if item.notes %}
+                                            <div class="text-xs text-gray-500 mt-1 max-w-32 truncate" title="{{ item.notes }}">
+                                                "{{ item.notes }}"
                                             </div>
                                         {% endif %}
                                     </div>
                                 </div>
                             </div>
-                        </a>
+                        </div>
                     </div>
                 {% endfor %}
             {% else %}
