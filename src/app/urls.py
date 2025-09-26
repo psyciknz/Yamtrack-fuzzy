@@ -81,5 +81,5 @@ urlpatterns = [
         name="search_parent_season",
     ),
     path("statistics", views.statistics, name="statistics"),
-    path('history', views.history_view, name='history'),
+    path("history", views.history_view, name="history"),
 ]

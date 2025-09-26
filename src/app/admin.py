@@ -29,13 +29,15 @@ class EpisodeAdmin(admin.ModelAdmin):
     search_fields = ["item__title", "related_season__item__title"]
     list_display = ["__str__", "end_date"]
 
+
 class MediaAdmin(admin.ModelAdmin):
     """Custom admin for regular media model with search and filter options."""
 
     search_fields = ["item__title", "user__username", "notes"]
     list_display = ["__str__", "status", "score", "user"]
     list_filter = ["status"]
-    
+
+
 # Register models with custom admin classes
 admin.site.register(Item, ItemAdmin)
 admin.site.register(Episode, EpisodeAdmin)
@@ -50,4 +52,3 @@ for model in app_models:
     ):
         with contextlib.suppress(AlreadyRegistered):
             admin.site.register(model, MediaAdmin)
-
