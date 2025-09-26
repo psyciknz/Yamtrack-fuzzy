@@ -853,7 +853,6 @@ class MediaManagerTests(TestCase):
         )  # 11 total - 5 offset
         self.assertEqual(in_progress[MediaTypes.ANIME.value]["total"], 11)
 
-
     def test_get_media(self):
         """Test the get_media method."""
         manager = MediaManager()
@@ -1001,6 +1000,29 @@ class MediaModel(TestCase):
             Anime.objects.get(item__media_id="1", user=self.user).progress,
             26,
         )
+
+    def test_poster_url_with_poster_path(self):
+        """Test poster_url property when poster_path exists."""
+        # Create a movie
+        movie_item = Item.objects.create(
+            media_id="550",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Fight Club",
+            image="http://example.com/fightclub.jpg",
+        )
+
+        movie = Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        # Dynamically add poster_path attribute
+        movie.poster_path = "/poster123.jpg"
+
+        expected_url = "https://image.tmdb.org/t/p/w500/poster123.jpg"
+        self.assertEqual(movie.poster_url, expected_url)
 
 
 class TVModel(TestCase):
