@@ -18,13 +18,16 @@ def get_user_consumable_media(user, start_date=None, end_date=None):
     consumable_items = []
     
     # Media type handlers
+    #"tv": _process_tv_shows,
     handlers = {
-        "tv": _process_tv_shows,
         "season": _process_seasons,
     }
+    skipped_types = ["tv"]  # Media types to skip processing
     
     # Process each media type
     for media_type, queryset in user_media.items():
+        if media_type in skipped_types:
+            continue
         if media_type in handlers:
             items = handlers[media_type](queryset)
         else:

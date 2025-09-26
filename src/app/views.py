@@ -849,7 +849,7 @@ def statistics(request):
 def history_view(request):
     """Display user's media consumption history with individual episodes."""
     # Get filter parameters
-    days_filter = request.GET.get('days', 'all')
+    days_filter = request.GET.get('days', '30')
     page_number = request.GET.get('page', 1)
     
     # Calculate date range based on filter
@@ -895,10 +895,10 @@ def history_view(request):
             (hasattr(item, 'start_date') and item.start_date and item.start_date >= week_ago))
     )
     
-    # This month's count  
+    # This month's count
     month_ago = timezone.now() - timedelta(days=30)
     month_count = sum(
-        1 for item in sorted_items 
+        1 for item in sorted_items
         if ((hasattr(item, 'end_date') and item.end_date and item.end_date >= month_ago) or
             (hasattr(item, 'start_date') and item.start_date and item.start_date >= month_ago))
     )
