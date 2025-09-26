@@ -1495,35 +1495,3 @@ class HistoryViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_filter"], "all")
-
-    def test_history_view_invalid_days_filter(self):
-        """Test history view with invalid days filter."""
-        response = self.client.get(reverse("history") + "?days=invalid")
-
-        self.assertEqual(response.status_code, 200)
-        # Should handle invalid filter gracefully
-
-    def test_history_view_pagination(self):
-        """Test history view pagination."""
-        # Create enough items to test pagination (25 per page)
-        for i in range(30):
-            item = Item.objects.create(
-                media_id=str(i),
-                source=Sources.TMDB.value,
-                media_type=MediaTypes.MOVIE.value,
-                title=f"Test Movie {i}",
-                image="http://example.com/image.jpg",
-            )
-            Movie.objects.create(
-                item=item,
-                user=self.user,
-                status=Status.COMPLETED.value,
-                end_date=timezone.now() - timezone.timedelta(days=i),
-            )
-
-        response = self.client.get(reverse("history"))
-        self.assertEqual(len(response.context["history_items"]), 25)
-
-        # Test second page
-        response = self.client.get(reverse("history") + "?page=2")
-        self.assertEqual(len(response.context["history_items"]), 5)

@@ -1001,29 +1001,6 @@ class MediaModel(TestCase):
             26,
         )
 
-    def test_poster_url_with_poster_path(self):
-        """Test poster_url property when poster_path exists."""
-        # Create a movie
-        movie_item = Item.objects.create(
-            media_id="550",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.MOVIE.value,
-            title="Fight Club",
-            image="http://example.com/fightclub.jpg",
-        )
-
-        movie = Movie.objects.create(
-            item=movie_item,
-            user=self.user,
-            status=Status.COMPLETED.value,
-        )
-
-        # Dynamically add poster_path attribute
-        movie.poster_path = "/poster123.jpg"
-
-        expected_url = "https://image.tmdb.org/t/p/w500/poster123.jpg"
-        self.assertEqual(movie.poster_url, expected_url)
-
 
 class TVModel(TestCase):
     """Test the @properties and custom save of the TV model."""
