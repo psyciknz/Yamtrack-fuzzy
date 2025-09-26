@@ -1,4 +1,4 @@
-import logging
+import logging  # noqa: I001
 from datetime import timedelta
 
 from django.apps import apps
