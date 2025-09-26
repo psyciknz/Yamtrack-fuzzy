@@ -17,7 +17,6 @@ class HistoryTests(TestCase):
         """Set up minimal test data."""
         self.user = get_user_model().objects.create_user(
             username="testuser",
-            password="testpass",
         )
 
     def test_format_episode_title(self):
