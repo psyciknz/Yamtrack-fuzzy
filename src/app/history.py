@@ -8,22 +8,17 @@ from app import statistics as stats
 logger = logging.getLogger(__name__)
 
 
-
-
 def get_user_consumable_media(user, start_date=None, end_date=None):
-    """
-    Get all individual consumable media items (movies, episodes, etc.) for a user.
-    """
+    """Get all individual consumable media items (movies, episodes, etc.) for a user."""
     user_media, media_count = stats.get_user_media(user, start_date, end_date)
     consumable_items = []
-    
+
     # Media type handlers
-    #"tv": _process_tv_shows,
     handlers = {
         "season": _process_seasons,
     }
     skipped_types = ["tv"]  # Media types to skip processing
-    
+
     # Process each media type
     for media_type, queryset in user_media.items():
         if media_type in skipped_types:
@@ -33,12 +28,12 @@ def get_user_consumable_media(user, start_date=None, end_date=None):
         else:
             items = _process_direct_media(queryset, media_type)
         consumable_items.extend(items)
-    
+
     # Update media count for episodes
     updated_count = _update_media_count(media_count, consumable_items)
-    
+
     _log_retrieval_info(user, consumable_items, start_date, end_date)
-    
+
     return consumable_items, updated_count
 
 
@@ -66,10 +61,10 @@ def _extract_episodes_from_season(season, tv_title):
     for episode in season.episodes.all():
         episode.consumable_type = "episode"
         episode.display_title = _format_episode_title(
-            tv_title, 
-            season.item.season_number, 
+            tv_title,
+            season.item.season_number,
             episode.item.episode_number,
-            episode.item.title
+            episode.item.title,
         )
         episodes.append(episode)
     return episodes
@@ -95,28 +90,32 @@ def _process_direct_media(queryset, media_type):
 
 def _update_media_count(media_count, consumable_items):
     """Update media count to reflect episodes instead of seasons/TV shows."""
-    episode_count = sum(1 for item in consumable_items if item.consumable_type == "episode")
-    
+    episode_count = sum(
+        1 for item in consumable_items if item.consumable_type == "episode"
+    )
+
     if episode_count == 0:
         return media_count
-    
+
     updated_count = media_count.copy()
-    
+
     # Remove TV and season counts, add episode count
     removed_count = 0
     for media_type in ["tv", "season"]:
         if media_type in updated_count:
             removed_count += updated_count.pop(media_type)
-    
+
     updated_count["episode"] = episode_count
     updated_count["total"] = updated_count["total"] - removed_count + episode_count
-    
+
     return updated_count
 
 
 def _log_retrieval_info(user, consumable_items, start_date, end_date):
     """Log information about retrieved media items."""
-    date_range = "for all time" if start_date is None else f"from {start_date} to {end_date}"
+    date_range = (
+        "for all time" if start_date is None else f"from {start_date} to {end_date}"
+    )
     logger.info(
         "%s - Retrieved %d consumable media items %s",
         user,
@@ -131,12 +130,12 @@ def get_consumable_media_timeline(consumable_items):
     for item in consumable_items:
         # Determine the date to use for timeline placement
         date_to_use = None
-        
+
         if hasattr(item, "end_date") and item.end_date:
             date_to_use = timezone.localdate(item.end_date)
         elif hasattr(item, "start_date") and item.start_date:
             date_to_use = timezone.localdate(item.start_date)
-        
+
         if date_to_use:
             timeline[date_to_use].append(item)
     # Sort timeline by date (most recent first) and items within each date
@@ -146,8 +145,10 @@ def get_consumable_media_timeline(consumable_items):
         sorted_items = sorted(
             timeline[date],
             key=lambda x: (
-                timezone.localtime(x.end_date) if hasattr(x, "end_date") and x.end_date 
-                else timezone.localtime(x.start_date) if hasattr(x, "start_date") and x.start_date
+                timezone.localtime(x.end_date)
+                if hasattr(x, "end_date") and x.end_date
+                else timezone.localtime(x.start_date)
+                if hasattr(x, "start_date") and x.start_date
                 else timezone.now()
             ),
             reverse=True,

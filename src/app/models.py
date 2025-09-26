@@ -2,18 +2,29 @@ import logging
 
 from django.apps import apps
 from django.conf import settings
-from django.core.validators import (DecimalValidator, MaxValueValidator,
-                                    MinValueValidator)
+from django.core.validators import (
+    DecimalValidator,
+    MaxValueValidator,
+    MinValueValidator,
+)
 from django.db import models
-from django.db.models import (CheckConstraint, Count, F, IntegerField, Max,
-                              Prefetch, Q, UniqueConstraint, Window)
+from django.db.models import (
+    CheckConstraint,
+    Count,
+    F,
+    IntegerField,
+    Max,
+    Prefetch,
+    Q,
+    UniqueConstraint,
+    Window,
+)
 from django.db.models.functions import Cast, RowNumber
 from django.utils import timezone
 from model_utils import FieldTracker
 from model_utils.fields import MonitorField
 from simple_history.models import HistoricalRecords
-from simple_history.utils import (bulk_create_with_history,
-                                  bulk_update_with_history)
+from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
 import app
 import events
@@ -847,24 +858,25 @@ class Media(models.Model):
     def get_media_type_display(self):
         """Return a nice display name for media type."""
         type_mapping = {
-            MediaTypes.MOVIE.value: 'Movie',
-            MediaTypes.TV.value: 'TV Show',
-            MediaTypes.SEASON.value: 'Season',
-            MediaTypes.EPISODE.value: 'Episode',
-            MediaTypes.ANIME.value: 'Anime',
-            MediaTypes.MANGA.value: 'Manga',
-            MediaTypes.BOOK.value: 'Book',
-            MediaTypes.GAME.value: 'Game',
-            MediaTypes.COMIC.value: 'Comic',
+            MediaTypes.MOVIE.value: "Movie",
+            MediaTypes.TV.value: "TV Show",
+            MediaTypes.SEASON.value: "Season",
+            MediaTypes.EPISODE.value: "Episode",
+            MediaTypes.ANIME.value: "Anime",
+            MediaTypes.MANGA.value: "Manga",
+            MediaTypes.BOOK.value: "Book",
+            MediaTypes.GAME.value: "Game",
+            MediaTypes.COMIC.value: "Comic",
         }
         return type_mapping.get(self.item.media_type, self.item.media_type.title())
 
     @property
     def poster_url(self):
         """Return the poster URL or None if not available."""
-        if hasattr(self, 'poster_path') and self.poster_path:
+        if hasattr(self, "poster_path") and self.poster_path:
             return f"https://image.tmdb.org/t/p/w500{self.poster_path}"
         return None
+
 
 class BasicMedia(Media):
     """Model for basic media types."""
@@ -1583,4 +1595,3 @@ class Comic(Media):
     """Model for comics."""
 
     tracker = FieldTracker()
-
