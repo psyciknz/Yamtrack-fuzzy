@@ -1124,14 +1124,14 @@ def _sort_tv_media_by_time_left(media_list):
             group_tail.append(media)
             continue
         effective_max = _effective_max_progress(media)
-        # Check provider only for active shows where we might be missing new episodes
-        # This avoids expensive API calls for completed/dropped shows
+        # Check provider when we need accurate max_progress data
         status = getattr(media, 'status', Status.IN_PROGRESS.value)
         should_check_provider = (
             effective_max <= 0  # No local data
             or effective_max < media.progress  # Progress exceeds known max (data issue)
             or (status in {Status.IN_PROGRESS.value, Status.PLANNING.value, Status.PAUSED.value}
                 and effective_max == media.progress)  # Caught up - might have new episodes
+            or (status == Status.DROPPED.value and effective_max <= media.progress + 5)  # Dropped shows - check if there's more content
         )
         
         if should_check_provider:
@@ -1212,7 +1212,8 @@ def _sort_tv_media_by_time_left(media_list):
 
     # 4) Dropped - show remaining content (sorted by least time left)
     for m in group_dropped:
-        if hasattr(m, 'max_progress') and hasattr(m, 'progress'):
+        # Calculate episodes remaining (not watched)
+        if hasattr(m, 'max_progress') and hasattr(m, 'progress') and m.max_progress > 0:
             episodes_left = m.max_progress - m.progress
             if episodes_left < 0:
                 episodes_left = 0
@@ -1231,6 +1232,7 @@ def _sort_tv_media_by_time_left(media_list):
             else:
                 m.time_left_display = "0m"
         else:
+            # No max_progress data - show as unknown
             m.episodes_left_display = 0
             m.time_left_display = "-"
     
