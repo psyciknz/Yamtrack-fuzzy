@@ -132,41 +132,31 @@ def media_list(request, media_type):
         
         logger = logging.getLogger(__name__)
         
-        # Create a cache key based on user and filters to avoid conflicts
-        # Bump version when changing ordering logic
-        cache_key = f"time_left_sorted_v6_{request.user.id}_{media_type}_{status_filter}_{search_query}"
+        # TEMPORARILY DISABLED CACHING FOR DEBUGGING
+        # TODO: Implement proper cache invalidation based on progress updates
+        # cache_key = f"time_left_sorted_v6_{request.user.id}_{media_type}_{status_filter}_{search_query}"
+        # cached_results = cache.get(cache_key)
         
-        # Try to get cached sorted results first
-        cached_results = cache.get(cache_key)
+        logger.debug(f"DEBUG: Starting time_left sort for page {page} (cache disabled for debugging)")
         
-        if cached_results is not None:
-            logger.debug(f"DEBUG: Using cached time_left sort results for page {page}")
-            # Use cached sorted list
-            items_per_page = 32
-            paginator = Paginator(cached_results, items_per_page)
-            media_page = paginator.get_page(page)
-        else:
-            logger.debug(f"DEBUG: Starting time_left sort for page {page} (no cache)")
-            
-            # Get all media objects for sorting
-            media_list = list(media_queryset)
-            logger.debug(f"DEBUG: Got {len(media_list)} media objects from queryset")
-            
-            # Annotate max_progress first
-            BasicMedia.objects.annotate_max_progress(media_list, media_type)
-            logger.debug(f"DEBUG: Annotated max_progress for all media")
-            
-            # Apply time_left sorting
-            media_list = _sort_tv_media_by_time_left(media_list)
-            logger.debug(f"DEBUG: Applied time_left sorting")
-            
-            # Cache the sorted results for 5 minutes
-            cache.set(cache_key, media_list, 300)
-            logger.debug(f"DEBUG: Cached sorted results for 5 minutes")
-            
-            # Paginate the sorted list
-            items_per_page = 32
-            paginator = Paginator(media_list, items_per_page)
+        # Get all media objects for sorting
+        media_list = list(media_queryset)
+        logger.debug(f"DEBUG: Got {len(media_list)} media objects from queryset")
+        
+        # Annotate max_progress first
+        BasicMedia.objects.annotate_max_progress(media_list, media_type)
+        logger.debug(f"DEBUG: Annotated max_progress for all media")
+        
+        # Apply time_left sorting
+        media_list = _sort_tv_media_by_time_left(media_list)
+        logger.debug(f"DEBUG: Applied time_left sorting")
+        
+        # CACHING DISABLED - will re-enable with proper invalidation strategy
+        # cache.set(cache_key, media_list, 300)
+        
+        # Paginate the sorted list
+        items_per_page = 32
+        paginator = Paginator(media_list, items_per_page)
             media_page = paginator.get_page(page)
         
         logger.debug(f"DEBUG: Paginated to page {page} of {paginator.num_pages} pages")
