@@ -1143,25 +1143,25 @@ def _sort_tv_media_by_time_left(media_list):
         if not runtime or runtime <= 0:
             runtime = 30  # Ensure fallback is used
         total = episodes_left * runtime
-        # Store the time_left for display
-        media.episodes_left = episodes_left
+        # Store the display values using non-property attributes
+        media._episodes_left_display = episodes_left
         if total > 0:
             hours = int(total // 60)
             minutes = int(total % 60)
             if hours > 0:
-                media.time_left = f"{hours}h {minutes}m"
+                media._time_left_display = f"{hours}h {minutes}m"
             else:
-                media.time_left = f"{minutes}m"
+                media._time_left_display = f"{minutes}m"
         else:
-            media.time_left = f"{episodes_left} ep" if episodes_left > 0 else "-"
-        logger.debug(f"Active: {media.item.title} - {episodes_left} eps × {runtime}min = {total}min ({media.time_left})")
+            media._time_left_display = f"{episodes_left} ep" if episodes_left > 0 else "-"
+        logger.debug(f"Active: {media.item.title} - {episodes_left} eps × {runtime}min = {total}min ({media._time_left_display})")
         return (total, media.item.title.lower())
     group_active_sorted = [m for (m, _) in sorted(group_active, key=_active_key)]
 
     # 2) In-Progress caught-up by newest end_date
     for m in group_inprog_zero:
-        m.episodes_left = 0
-        m.time_left = "0m"
+        m._episodes_left_display = 0
+        m._time_left_display = "0m"
     group_inprog_zero_sorted = sorted(
         group_inprog_zero,
         key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
@@ -1169,8 +1169,8 @@ def _sort_tv_media_by_time_left(media_list):
 
     # 3) Completed by newest end_date
     for m in group_completed:
-        m.episodes_left = 0
-        m.time_left = "0m"
+        m._episodes_left_display = 0
+        m._time_left_display = "0m"
     group_completed_sorted = sorted(
         group_completed,
         key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
@@ -1182,21 +1182,21 @@ def _sort_tv_media_by_time_left(media_list):
             episodes_left = m.max_progress - m.progress
             if episodes_left < 0:
                 episodes_left = 0
-            m.episodes_left = episodes_left
+            m._episodes_left_display = episodes_left
             if episodes_left > 0:
                 runtime = _calc_runtime_minutes(m)
                 total = episodes_left * runtime
                 hours = int(total // 60)
                 minutes = int(total % 60)
                 if hours > 0:
-                    m.time_left = f"{hours}h {minutes}m"
+                    m._time_left_display = f"{hours}h {minutes}m"
                 else:
-                    m.time_left = f"{minutes}m"
+                    m._time_left_display = f"{minutes}m"
             else:
-                m.time_left = "0m"
+                m._time_left_display = "0m"
         else:
-            m.episodes_left = 0
-            m.time_left = "-"
+            m._episodes_left_display = 0
+            m._time_left_display = "-"
     group_dropped_sorted = sorted(
         group_dropped,
         key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
@@ -1204,8 +1204,8 @@ def _sort_tv_media_by_time_left(media_list):
     
     # 5) Tail (unreleased/unknown) - set display values
     for m in group_tail:
-        m.episodes_left = 0
-        m.time_left = "-"
+        m._episodes_left_display = 0
+        m._time_left_display = "-"
 
     sorted_list = (
         group_active_sorted
