@@ -134,7 +134,7 @@ def media_list(request, media_type):
         
         # Cache sorted results for 5 minutes to avoid expensive re-sorts
         # Cache invalidates automatically when you update any show progress
-        cache_key = f"time_left_sorted_v8_{request.user.id}_{media_type}_{status_filter}_{search_query}"
+        cache_key = f"time_left_sorted_v9_{request.user.id}_{media_type}_{status_filter}_{search_query}"
         cached_results = cache.get(cache_key)
         
         if cached_results is not None:
@@ -1210,30 +1210,28 @@ def _sort_tv_media_by_time_left(media_list):
         key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
     )
 
-    # 4) Dropped by newest end_date
+    # 4) Dropped - show how much you watched before dropping (sorted by most watched)
     for m in group_dropped:
-        if hasattr(m, 'max_progress'):
-            episodes_left = m.max_progress - m.progress
-            if episodes_left < 0:
-                episodes_left = 0
-            m.episodes_left_display = episodes_left
-            if episodes_left > 0:
-                runtime = _calc_runtime_minutes(m)
-                total = episodes_left * runtime
-                hours = int(total // 60)
-                minutes = int(total % 60)
-                if hours > 0:
-                    m.time_left_display = f"{hours}h {minutes}m"
-                else:
-                    m.time_left_display = f"{minutes}m"
+        episodes_watched = m.progress if hasattr(m, 'progress') else 0
+        m.episodes_left_display = episodes_watched
+        
+        if episodes_watched > 0:
+            runtime = _calc_runtime_minutes(m)
+            total = episodes_watched * runtime
+            hours = int(total // 60)
+            minutes = int(total % 60)
+            if hours > 0:
+                m.time_left_display = f"{hours}h {minutes}m"
             else:
-                m.time_left_display = "0m"
+                m.time_left_display = f"{minutes}m"
+            logger.debug(f"Dropped: {m.item.title} - Watched {episodes_watched} eps × {runtime}min = {total}min ({m.time_left_display})")
         else:
-            m.episodes_left_display = 0
-            m.time_left_display = "-"
+            m.time_left_display = "0m"
+    
+    # Sort dropped by most time watched (descending), then by title
     group_dropped_sorted = sorted(
         group_dropped,
-        key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
+        key=lambda m: (-m.episodes_left_display * _calc_runtime_minutes(m), m.item.title.lower()),
     )
     
     # 5) Tail (unreleased/unknown) - set display values
