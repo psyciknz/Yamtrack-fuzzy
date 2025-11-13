@@ -1,10 +1,13 @@
 import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from app import statistics
+from app.helpers import minutes_to_hhmm
 from app.models import (
     TV,
     Anime,
@@ -974,3 +977,72 @@ class StatisticsTests(TestCase):
         user_media['anime'].exists.return_value = False
         result = statistics.get_top_played_media(user_media, None, None)
         self.assertEqual(result, {})
+
+    def test_get_top_played_media_aggregates_movie_repeats(self):
+        """Ensure repeated movie plays are aggregated into a single entry."""
+        
+        class FakeQuerySet(list):
+            def exists(self):
+                return bool(self)
+        
+        start_date = timezone.make_aware(datetime.datetime(2025, 1, 1))
+        end_date = timezone.make_aware(datetime.datetime(2025, 12, 31, 23, 59, 59))
+        
+        movie_item = SimpleNamespace(
+            id=42,
+            runtime_minutes=106,
+            title="Cars 2",
+            media_type=MediaTypes.MOVIE.value,
+            image="https://example.com/cars2.jpg",
+            media_id="557",
+            source=Sources.TMDB.value,
+        )
+        
+        def make_movie_instance(day):
+            end_dt = timezone.make_aware(datetime.datetime(2025, 5, day, 12, 0, 0))
+            return SimpleNamespace(
+                item=movie_item,
+                end_date=end_dt,
+                start_date=end_dt - datetime.timedelta(hours=2),
+                created_at=end_dt - datetime.timedelta(days=1),
+                status=Status.COMPLETED.value,
+            )
+        
+        first_play = make_movie_instance(6)
+        second_play = make_movie_instance(7)
+        
+        other_movie_item = SimpleNamespace(
+            id=43,
+            runtime_minutes=150,
+            title="Another Movie",
+            media_type=MediaTypes.MOVIE.value,
+            image="https://example.com/other.jpg",
+            media_id="558",
+            source=Sources.TMDB.value,
+        )
+        other_movie = SimpleNamespace(
+            item=other_movie_item,
+            end_date=timezone.make_aware(datetime.datetime(2025, 1, 5, 20, 0, 0)),
+            start_date=timezone.make_aware(datetime.datetime(2025, 1, 5, 18, 0, 0)),
+            created_at=timezone.make_aware(datetime.datetime(2025, 1, 4, 18, 0, 0)),
+            status=Status.COMPLETED.value,
+        )
+        
+        user_media = {'movie': FakeQuerySet([first_play, second_play, other_movie])}
+        
+        result = statistics.get_top_played_media(user_media, start_date, end_date)
+        
+        self.assertIn('movie', result)
+        self.assertEqual(len(result['movie']), 2)
+        
+        top_movie = result['movie'][0]
+        self.assertIs(top_movie['media'], second_play)
+        self.assertEqual(top_movie['play_count'], 2)
+        self.assertEqual(top_movie['total_time_minutes'], 212)
+        self.assertEqual(top_movie['formatted_duration'], minutes_to_hhmm(212))
+        self.assertEqual(top_movie['last_activity'], second_play.end_date)
+        
+        second_entry = result['movie'][1]
+        self.assertIs(second_entry['media'], other_movie)
+        self.assertEqual(second_entry['play_count'], 1)
+        self.assertEqual(second_entry['total_time_minutes'], 150)

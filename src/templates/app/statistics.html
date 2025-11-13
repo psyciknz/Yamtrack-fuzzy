@@ -661,7 +661,9 @@
                   <a href="{{ item.media.item|media_url }}"
                      class="text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1"
                      title="{{ item.media.item }}">{{ item.media.item }}</a>
-                  <p class="text-xs text-gray-400 mt-1">1 play</p>
+                  <p class="text-xs text-gray-400 mt-1">
+                    {{ item.play_count }} play{{ item.play_count|pluralize }}
+                  </p>
                   <p class="text-xs text-indigo-400 mt-1">{{ item.formatted_duration }}</p>
                 </div>
               </div>

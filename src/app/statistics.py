@@ -970,34 +970,81 @@ def get_top_played_media(user_media, start_date, end_date):
         # Get media items with their progress and metadata
         media_with_progress = []
         
-        for media in media_list:
-            total_time_minutes = 0
-            episode_count = 0
+        if normalized_type == "movie":
+            aggregated_movies = {}
             
-            if normalized_type == "tv":
-                total_time_minutes, episode_count = _calculate_tv_time(media, start_date, end_date, logger)
-            elif normalized_type == "anime":
-                total_time_minutes, episode_count = _calculate_anime_time(media, start_date, end_date, logger)
-            elif normalized_type == "game":
-                # For games, use progress field (stored in minutes)
-                if media.end_date and start_date and end_date:
-                    if start_date <= media.end_date <= end_date:
-                        total_time_minutes += media.progress
-                elif not start_date and not end_date:
-                    # All time
-                    total_time_minutes += media.progress
-            else:
-                # For movies and other media types, get runtime from metadata
+            for media in media_list:
                 total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, logger)
+                if total_time_minutes <= 0:
+                    continue
+                
+                item = getattr(media, "item", None)
+                if not item:
+                    continue
+                
+                # Use item id when available, fallback to (media_id, source) tuple
+                item_key = getattr(item, "id", None)
+                if item_key is None:
+                    item_key = (getattr(item, "media_id", None), getattr(item, "source", None))
+                
+                activity = media.end_date or media.start_date or media.created_at
+                if item_key not in aggregated_movies:
+                    aggregated_movies[item_key] = {
+                        'media': media,
+                        'total_time_minutes': total_time_minutes,
+                        'formatted_duration': None,  # populated after aggregation
+                        'episode_count': 0,
+                        'last_activity': activity,
+                        'play_count': 1,
+                        '_media_activity': activity,
+                    }
+                else:
+                    entry = aggregated_movies[item_key]
+                    entry['total_time_minutes'] += total_time_minutes
+                    entry['play_count'] += 1
+                    
+                    if activity and (entry['last_activity'] is None or activity > entry['last_activity']):
+                        entry['last_activity'] = activity
+                    
+                    current_media_activity = entry.get('_media_activity')
+                    if activity and (current_media_activity is None or activity > current_media_activity):
+                        entry['media'] = media
+                        entry['_media_activity'] = activity
             
-            if total_time_minutes > 0:
-                media_with_progress.append({
-                    'media': media,
-                    'total_time_minutes': total_time_minutes,
-                    'formatted_duration': minutes_to_hhmm(total_time_minutes),
-                    'episode_count': episode_count,
-                    'last_activity': media.end_date or media.start_date or media.created_at
-                })
+            for entry in aggregated_movies.values():
+                entry['formatted_duration'] = minutes_to_hhmm(entry['total_time_minutes'])
+                entry.pop('_media_activity', None)
+                media_with_progress.append(entry)
+        else:
+            for media in media_list:
+                total_time_minutes = 0
+                episode_count = 0
+                
+                if normalized_type == "tv":
+                    total_time_minutes, episode_count = _calculate_tv_time(media, start_date, end_date, logger)
+                elif normalized_type == "anime":
+                    total_time_minutes, episode_count = _calculate_anime_time(media, start_date, end_date, logger)
+                elif normalized_type == "game":
+                    # For games, use progress field (stored in minutes)
+                    if media.end_date and start_date and end_date:
+                        if start_date <= media.end_date <= end_date:
+                            total_time_minutes += media.progress
+                    elif not start_date and not end_date:
+                        # All time
+                        total_time_minutes += media.progress
+                else:
+                    # For movies and other media types, get runtime from metadata
+                    total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, logger)
+                
+                if total_time_minutes > 0:
+                    media_with_progress.append({
+                        'media': media,
+                        'total_time_minutes': total_time_minutes,
+                        'formatted_duration': minutes_to_hhmm(total_time_minutes),
+                        'episode_count': episode_count,
+                        'last_activity': media.end_date or media.start_date or media.created_at,
+                        'play_count': 1,
+                    })
         
         # Sort by total time, then by most recent activity
         media_with_progress.sort(
