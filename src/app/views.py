@@ -16,7 +16,7 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import helpers, history_processor
+from app import cache_utils, helpers, history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
 from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
@@ -135,8 +135,12 @@ def media_list(request, media_type):
         logger = logging.getLogger(__name__)
         
         # Cache sorted results for 5 minutes to avoid expensive re-sorts
-        # Cache invalidates automatically when you update any show progress
-        cache_key = f"time_left_sorted_v11_{request.user.id}_{media_type}_{status_filter}_{search_query}"
+        cache_key = cache_utils.build_time_left_cache_key(
+            request.user.id,
+            media_type,
+            status_filter,
+            search_query,
+        )
         cached_results = cache.get(cache_key)
         
         if cached_results is not None:
@@ -159,6 +163,7 @@ def media_list(request, media_type):
             
             # Cache for 5 minutes (300 seconds)
             cache.set(cache_key, media_list, 300)
+            cache_utils.register_time_left_cache_key(request.user.id, cache_key)
         
         # Paginate the sorted list
         items_per_page = 32

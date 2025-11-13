@@ -29,7 +29,7 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 import app
 import events
 import users
-from app import providers
+from app import cache_utils, providers
 from app.mixins import CalendarTriggerMixin
 
 logger = logging.getLogger(__name__)
@@ -1146,6 +1146,8 @@ class TV(Media):
 
             self.item.fetch_releases(delay=True)
 
+        cache_utils.clear_time_left_cache_for_user(self.user_id)
+
     @property
     def progress(self):
         """Return the total episodes watched for the TV show."""
@@ -1530,6 +1532,7 @@ class Season(Media):
             "%s created successfully.",
             episode,
         )
+        cache_utils.clear_time_left_cache_for_user(self.user_id)
 
     def decrease_progress(self):
         """Unwatch the current episode of the season."""
@@ -1564,6 +1567,7 @@ class Season(Media):
             episode_number,
             remaining_count,
         )
+        cache_utils.clear_time_left_cache_for_user(self.user_id)
 
     def get_tv(self):
         """Get related TV instance for a season and create it if it doesn't exist."""

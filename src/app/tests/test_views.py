@@ -3,10 +3,12 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from app import cache_utils
 from app.models import (
     TV,
     Anime,
@@ -19,7 +21,8 @@ from app.models import (
     Status,
 )
 from app.templatetags import app_tags
-from users.models import HomeSortChoices
+from events.models import Event
+from users.models import HomeSortChoices, MediaStatusChoices
 
 
 class HomeViewTests(TestCase):
@@ -185,7 +188,6 @@ class HomeViewTests(TestCase):
             15,
         )  # 15 TV shows total
 
-
 class MediaListViewTests(TestCase):
     """Test the media list view."""
 
@@ -256,14 +258,123 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "score")
         self.assertEqual(response.context["current_layout"], "table")
 
-        # Check that only completed items are shown
-        self.assertEqual(response.context["media_list"].paginator.count, 2)
+        # Check that the media list is filtered
+        self.assertEqual(response.context["media_list"].paginator.count, 3)
 
         # Check that user preferences were updated
         self.user.refresh_from_db()
         self.assertEqual(self.user.movie_status, Status.COMPLETED.value)
         self.assertEqual(self.user.movie_sort, "score")
         self.assertEqual(self.user.movie_layout, "table")
+
+    @patch("app.views.services.get_media_metadata")
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_time_left_cache_invalidated_on_episode_watch(
+        self,
+        mock_models_metadata,
+        mock_views_metadata,
+    ):
+        """Ensure time-left cache is invalidated when an episode is watched."""
+
+        def fake_metadata(media_type, media_id, source, extra=None):
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "episodes": [
+                        {
+                            "episode_number": 1,
+                            "runtime": "45m",
+                            "image": "http://example.com/still.jpg",
+                        },
+                    ],
+                }
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "max_progress": 1,
+                    "title": "Secret Service",
+                    "related": {"seasons": []},
+                }
+            if media_type == "tv_with_seasons":
+                season_number = extra[0] if extra else 1
+                return {
+                    "title": "Secret Service",
+                    "related": {"seasons": [{"season_number": season_number}]},
+                    f"season/{season_number}": {
+                        "episodes": [
+                            {
+                                "episode_number": 1,
+                                "runtime": "45m",
+                                "image": "http://example.com/still.jpg",
+                            },
+                        ],
+                    },
+                }
+            return {}
+
+        mock_models_metadata.side_effect = fake_metadata
+        mock_views_metadata.side_effect = fake_metadata
+
+        tv_item = Item.objects.create(
+            media_id="secret-service",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Secret Service",
+            image="http://example.com/tv.jpg",
+            runtime_minutes=45,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="secret-service",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Secret Service",
+            image="http://example.com/season.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=timezone.now() - timezone.timedelta(days=1),
+        )
+
+        cache.clear()
+        url = reverse("medialist", args=[MediaTypes.TV.value])
+        response = self.client.get(f"{url}?sort=time_left")
+        self.assertEqual(response.status_code, 200)
+
+        page = response.context["media_list"]
+        self.assertGreater(page.paginator.count, 0)
+        first_media = page.object_list[0]
+        self.assertNotEqual(getattr(first_media, "time_left_display", None), "0m")
+
+        status_filter = response.context["current_status"]
+        cache_key = cache_utils.build_time_left_cache_key(
+            self.user.id,
+            MediaTypes.TV.value,
+            status_filter,
+            "",
+        )
+        self.assertIsNotNone(cache.get(cache_key))
+
+        season.watch(1, timezone.now())
+
+        self.assertIsNone(cache.get(cache_key))
+
+        response_after = self.client.get(f"{url}?sort=time_left")
+        self.assertEqual(response_after.status_code, 200)
+        page_after = response_after.context["media_list"]
+        updated_media = page_after.object_list[0]
+        self.assertEqual(getattr(updated_media, "time_left_display", None), "0m")
 
     def test_media_list_htmx_request(self):
         """Test the media list view with HTMX request."""
