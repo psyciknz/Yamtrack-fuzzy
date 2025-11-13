@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db.utils import OperationalError
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from requests import Response
@@ -1118,6 +1119,46 @@ class HelpersTest(TestCase):
         schedule = CrontabSchedule.objects.first()
         self.assertEqual(schedule.day_of_week, "*/2")
 
+
+class RetryOnLockTests(SimpleTestCase):
+    """Tests for retry_on_lock helper."""
+
+    @patch("integrations.imports.helpers.time.sleep", autospec=True)
+    def test_retry_on_lock_eventual_success(self, mock_sleep):
+        """Ensure retry_on_lock retries on lock errors and eventually returns."""
+        call_count = {"value": 0}
+
+        def flaky_call():
+            if call_count["value"] < 2:
+                call_count["value"] += 1
+                raise OperationalError("database is locked")
+            return "ok"
+
+        result = helpers.retry_on_lock(flaky_call, max_retries=5, base_delay=0)
+        self.assertEqual(result, "ok")
+        self.assertEqual(call_count["value"], 2)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch("integrations.imports.helpers.time.sleep", autospec=True)
+    def test_retry_on_lock_raises_after_max_retries(self, mock_sleep):
+        """Ensure retry_on_lock raises when retries are exhausted."""
+
+        def always_locked():
+            raise OperationalError("database is locked")
+
+        with self.assertRaises(OperationalError):
+            helpers.retry_on_lock(always_locked, max_retries=3, base_delay=0)
+
+        self.assertEqual(mock_sleep.call_count, 3)
+
+    def test_retry_on_lock_non_lock_error(self):
+        """Ensure retry_on_lock does not swallow non-lock OperationalError."""
+
+        def integrity_error():
+            raise OperationalError("FOREIGN KEY constraint failed")
+
+        with self.assertRaises(OperationalError):
+            helpers.retry_on_lock(integrity_error)
 
 class ImportSteam(TestCase):
     """Test importing media from Steam."""

@@ -17,6 +17,7 @@ from decouple import (
     undefined,
 )
 from django.core.cache import CacheKeyWarning
+from django.db.backends.signals import connection_created
 
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
@@ -200,12 +201,40 @@ if config("DB_HOST", default=None):
         DATABASES["default"]["OPTIONS"]["sslcertmode"] = sslcertmode
 
 else:
+    SQLITE_BUSY_TIMEOUT_SECONDS = config(
+        "SQLITE_BUSY_TIMEOUT_SECONDS",
+        default=30,
+        cast=int,
+    )
+    SQLITE_JOURNAL_MODE = config("SQLITE_JOURNAL_MODE", default="WAL")
+    SQLITE_SYNCHRONOUS = config("SQLITE_SYNCHRONOUS", default="NORMAL")
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db" / "db.sqlite3",
+            "OPTIONS": {
+                "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
+            },
         },
     }
+
+    def configure_sqlite_connection(sender, connection, **_kwargs):
+        """Ensure SQLite connections wait for locks and use WAL."""
+        if connection.vendor != "sqlite":
+            return
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
+            cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
+            cursor.execute(
+                f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
+            )
+        finally:
+            cursor.close()
+
+    connection_created.connect(configure_sqlite_connection)
 
 # Cache
 # https://docs.djangoproject.com/en/stable/topics/cache/

@@ -128,16 +128,18 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        item, _ = app.models.Item.objects.update_or_create(
-            media_id=row["media_id"],
-            source=row["source"],
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-            defaults={
-                "title": row["title"],
-                "image": row["image"],
-            },
+        item, _ = helpers.retry_on_lock(
+            lambda: app.models.Item.objects.update_or_create(
+                media_id=row["media_id"],
+                source=row["source"],
+                media_type=media_type,
+                season_number=season_number,
+                episode_number=episode_number,
+                defaults={
+                    "title": row["title"],
+                    "image": row["image"],
+                },
+            )
         )
 
         model = apps.get_model(app_label="app", model_name=media_type)
