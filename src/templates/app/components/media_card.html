@@ -1,6 +1,7 @@
 {% load app_tags %}
 {% load user_tags %}
 
+{% with current_sort|default_if_none:'' as current_sort_value %}
 <div class="media-card {% if secondary_color %}bg-[#39404b]{% else %}bg-[#2a2f35]{% endif %} rounded-lg overflow-hidden shadow-lg relative"
      x-data="{ trackOpen: false, listsOpen: false, historyOpen: false }">
   <div class="relative">
@@ -10,7 +11,8 @@
          src="{{ IMG_NONE }}">
 
     {% if media.status %}
-      <div class="absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+      <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
+           data-mobile-hide-on-score="{% if current_sort_value == 'score' %}true{% else %}false{% endif %}">
         {% if media.aggregated_status %}
           {% if media.aggregated_status == Status.COMPLETED.value %}
             <svg xmlns="http://www.w3.org/2000/svg"
@@ -178,7 +180,9 @@
     {% endif %}
 
     {% if media.aggregated_score is not None %}
-      <div class="absolute sm:top-2 sm:right-2 sm:left-auto top-10 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+      <div class="media-score-chip absolute sm:top-2 sm:right-2 sm:left-auto top-10 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
+           data-score-chip-mode="{{ score_chip_mode|default:'always' }}"
+           data-mobile-show="{% if current_sort_value == 'score' %}true{% else %}false{% endif %}">
         <svg xmlns="http://www.w3.org/2000/svg"
              width="24"
              height="24"
@@ -194,7 +198,9 @@
         <span class="text-sm text-white">{{ media.aggregated_score }}</span>
       </div>
     {% elif media.score is not None %}
-      <div class="absolute sm:top-2 sm:right-2 sm:left-auto top-10 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+      <div class="media-score-chip absolute sm:top-2 sm:right-2 sm:left-auto top-10 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
+           data-score-chip-mode="{{ score_chip_mode|default:'always' }}"
+           data-mobile-show="{% if current_sort_value == 'score' %}true{% else %}false{% endif %}">
         <svg xmlns="http://www.w3.org/2000/svg"
              width="24"
              height="24"
@@ -219,7 +225,9 @@
         </span>
       </div>
     {% elif media.progress and media_type != MediaTypes.MOVIE.value %}
-      <div class="absolute bottom-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+      <div class="media-progress-chip absolute bottom-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
+           data-progress-chip-mode="{{ progress_chip_mode|default:'always' }}"
+           data-mobile-show="{% if current_sort_value == 'progress' %}true{% else %}false{% endif %}">
         <span class="text-sm text-white">
           {{ media.formatted_progress }}
           {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
@@ -228,10 +236,12 @@
     {% endif %}
 
     {# Time Left display for time_left sort #}
-    {% if media_type == MediaTypes.TV.value and current_sort == 'time_left' and media.episodes_left > 0 %}
-      <div class="absolute bottom-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+    {% if media_type == MediaTypes.TV.value and media.episodes_left > 0 %}
+      <div class="media-time-left-chip absolute bottom-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
+           data-time-left-mode="{{ time_left_chip_mode|default:'always' }}"
+           data-mobile-show="{% if current_sort_value == 'time_left' %}true{% else %}false{% endif %}">
         <span class="text-sm text-white">
-          {{ media.formatted_time_left }}
+          {{ media.time_left_display|default:media.formatted_time_left }}
         </span>
       </div>
     {% endif %}
@@ -436,3 +446,4 @@
     </div>
   </div>
 </div>
+{% endwith %}

@@ -120,7 +120,7 @@
       <a href="{{ media.item|media_url }}"
          class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 text-center"
          title="{{ media }}">{{ media }}</a>
-      <div id="progress-{{ media.item.media_type }}-{{ media.id }}" class="media-card-progress">
+      <div id="progress-{{ media.item.media_type }}-{{ media.id }}" class="media-card-progress" data-progress-mode="conditional" data-mobile-show="{% if current_sort_value == 'progress' %}true{% else %}false{% endif %}">
         {% include "app/components/progress_changer.html" with media=media csrf_token=csrf_token MediaTypes=MediaTypes only %}
       </div>
       

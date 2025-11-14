@@ -2869,6 +2869,33 @@
   .progress-changer {
     width: 100%;
   }
+  .media-card-progress[data-progress-mode="conditional"] {
+    display: none !important;
+  }
+  .media-card-progress[data-progress-mode="conditional"][data-mobile-show="true"] {
+    display: block !important;
+  }
+  .media-progress-chip[data-progress-chip-mode="conditional"] {
+    display: none !important;
+  }
+  .media-progress-chip[data-progress-chip-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+  .media-time-left-chip[data-time-left-mode="conditional"] {
+    display: none !important;
+  }
+  .media-time-left-chip[data-time-left-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+  .media-score-chip[data-score-chip-mode="conditional"] {
+    display: none !important;
+  }
+  .media-score-chip[data-score-chip-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+  .media-status-chip[data-mobile-hide-on-score="true"] {
+    display: none !important;
+  }
 }
 .toast-error {
   border-color: var(--color-red-600);
