@@ -8,14 +8,20 @@
 
 Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, video games and books.
 
-## ✨ Repo-Specific Features
+## 📱 Repo Specific Features
 
-- Sort by Ratings on Lists
-- Preferences Tab for more flexibility in optional features
-- Improved Statistic including most watched and total time per media type
-- Multiple plays combined in Video Games
-- Sort TV Shows by Least Time Remaining
-- Fixed issue with Yamtrack CSV Importing
+| Sort Lists by Ratings                                                                                       | Preferences Tab for Optional Features                                                                                    |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 45 17 PM" src="https://github.com/user-attachments/assets/77eb1685-d709-485f-a79b-2b4de2698009" /> | <img width="1176" height="583" alt="Screenshot 2025-11-13 at 8 46 54 PM" src="https://github.com/user-attachments/assets/0368c01b-a10c-44a9-9ed1-aa150b78f3aa" /> |
+
+
+| Top 10 Statistics                                                                                    | Activity Overview Statistics                                                                                     |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 48 32 PM" src="https://github.com/user-attachments/assets/9150add3-c7dd-4a18-a422-fcc67c30bb37" /> | <img alt="Screenshot 2025-11-13 at 8 49 48 PM" src="https://github.com/user-attachments/assets/91d85919-30c9-4a9d-b65b-92c4e78f8c5c" /> |
+
+| Combined Duplicates                                                                                         | Sort by Time Left                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/4d3c2796-90c7-47fe-b23e-c8104fff92cf" /> | <img alt="Screenshot 2025-11-13 at 8 52 39 PM" src="https://github.com/user-attachments/assets/3966fe33-9f9d-4d4d-bf35-1cbf61ac2e90" /> |
 
 ## 🚀 Demo
 
