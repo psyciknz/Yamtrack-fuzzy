@@ -225,6 +225,19 @@ class MediaForm(forms.ModelForm):
             ),
         }
 
+    def __init__(self, *args, **kwargs):
+        """Initialize the form."""
+        super().__init__(*args, **kwargs)
+        # Make date fields optional to allow submission without dates
+        if "start_date" in self.fields:
+            self.fields["start_date"].required = False
+            # Explicitly remove required attribute from widget to prevent HTML5 validation
+            self.fields["start_date"].widget.attrs.pop("required", None)
+        if "end_date" in self.fields:
+            self.fields["end_date"].required = False
+            # Explicitly remove required attribute from widget to prevent HTML5 validation
+            self.fields["end_date"].widget.attrs.pop("required", None)
+
 
 class MangaForm(MediaForm):
     """Form for manga."""
