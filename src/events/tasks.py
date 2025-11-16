@@ -2,6 +2,7 @@ import logging
 
 from celery import shared_task
 
+from app.services import auto_pause
 from events import calendar, notifications
 
 logger = logging.getLogger(__name__)
@@ -15,10 +16,15 @@ def reload_calendar(user=None, items_to_process=None):
     else:
         logger.info("Reloading calendar for all users")
 
-    return calendar.fetch_releases(
+    result = calendar.fetch_releases(
         user=user,
         items_to_process=items_to_process,
     )
+
+    if user is None:
+        auto_pause.auto_pause_stale_items()
+
+    return result
 
 
 @shared_task(name="Send release notifications")

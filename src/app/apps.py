@@ -1,6 +1,8 @@
 import logging
+import sys
 from django.apps import AppConfig
 from django.conf import settings
+from django.core.cache import cache
 
 
 logger = logging.getLogger(__name__)
@@ -16,12 +18,23 @@ class AppConfig(AppConfig):
         """Import signals when the app is ready."""
         import app.signals  # noqa: F401, PLC0415
         
-        # Only schedule runtime population once per startup to avoid duplicates
-        if (not settings.TESTING and 
-            not getattr(settings, 'RUNTIME_POPULATION_DISABLED', False) and
-            not hasattr(self, '_runtime_population_scheduled')):
+        # Skip scheduling if we're in a Celery worker process to avoid duplicates
+        # Only schedule from the main Django process (runserver, management commands, etc.)
+        is_celery_worker = any(
+            'celery' in arg.lower() and ('worker' in arg.lower() or 'beat' in arg.lower())
+            for arg in sys.argv
+        )
+        
+        # Only schedule runtime population once per day to avoid duplicates
+        # Use a 24-hour cache timeout and skip Celery worker processes
+        cache_key = "runtime_population_startup_scheduled"
+        if (
+            not settings.TESTING
+            and not getattr(settings, 'RUNTIME_POPULATION_DISABLED', False)
+            and not is_celery_worker
+            and cache.add(cache_key, True, timeout=86400)  # 24 hours
+        ):
             self._schedule_runtime_population()
-            self._runtime_population_scheduled = True
 
     def _schedule_runtime_population(self):
         """Schedule runtime population task to run once on startup."""

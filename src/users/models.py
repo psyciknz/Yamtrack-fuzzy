@@ -326,6 +326,16 @@ class User(AbstractUser):
         choices=TimeFormatChoices.choices,
     )
 
+    auto_pause_in_progress_enabled = models.BooleanField(
+        default=False,
+        help_text="Automatically pause stale in-progress items",
+    )
+    auto_pause_rules = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Auto-pause rules with per-library week thresholds",
+    )
+
     class Meta:
         """Meta options for the model."""
 
@@ -502,6 +512,25 @@ class User(AbstractUser):
             enabled_types.insert(0, MediaTypes.SEASON.value)
 
         return enabled_types
+
+    def get_auto_pause_rule(self, media_type: str):
+        """Return the most specific auto-pause rule for a media type."""
+        if not self.auto_pause_in_progress_enabled:
+            return None
+
+        if not self.auto_pause_rules:
+            return None
+
+        # Exact match overrides "all"
+        for rule in self.auto_pause_rules:
+            if rule.get("library") == media_type:
+                return rule
+
+        for rule in self.auto_pause_rules:
+            if rule.get("library") == "all":
+                return rule
+
+        return None
 
     def get_import_tasks(self):
         """Return import tasks history and schedules for the user."""

@@ -818,21 +818,27 @@ def process_other(item, events_bulk):
         )
 
 
-def date_parser(date_str):
-    """Parse string in %Y-%m-%d to datetime. Raises ValueError if invalid."""
-    year_only_parts = 1
-    year_month_parts = 2
-    default_month_day = "-01-01"
-    default_day = "-01"
-    # Preprocess the date string
-    parts = date_str.split("-")
-    if len(parts) == year_only_parts:
-        date_str += default_month_day
-    elif len(parts) == year_month_parts:
-        # Year and month are provided, append "-01"
-        date_str += default_day
+def date_parser(date_value):
+    """Parse string/datetime to sentinel datetime. Raises ValueError if invalid."""
+    if isinstance(date_value, datetime):
+        dt = date_value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        date_str = str(date_value)
+        year_only_parts = 1
+        year_month_parts = 2
+        default_month_day = "-01-01"
+        default_day = "-01"
+        # Preprocess the date string
+        parts = date_str.split("-")
+        if len(parts) == year_only_parts:
+            date_str += default_month_day
+        elif len(parts) == year_month_parts:
+            # Year and month are provided, append "-01"
+            date_str += default_day
 
-    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
+        dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
     # Set to max time and add UTC timezone
     return dt.replace(
         hour=SentinelDatetime.HOUR,

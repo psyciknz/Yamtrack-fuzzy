@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 from django.contrib import auth
@@ -9,6 +10,7 @@ from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import Item, MediaTypes, Sources
+from users.models import DateFormatChoices, TimeFormatChoices
 
 
 class Profile(TestCase):
@@ -412,6 +414,71 @@ class SidebarViewTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
         self.assertIn("view-only for demo accounts", str(messages[0]))
+
+
+class PreferencesViewTests(TestCase):
+    """Tests for the preferences view."""
+
+    def setUp(self):
+        """Create user for the tests."""
+        self.credentials = {"username": "prefuser", "password": "prefpass123"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def test_preferences_post_updates_auto_pause_rules(self):
+        """Auto-pause settings are persisted from the preferences form."""
+        rules_payload = json.dumps(
+            [
+                {"library": "all", "weeks": 20},
+                {"library": MediaTypes.MOVIE.value, "weeks": "6"},
+                {"library": MediaTypes.ANIME.value, "weeks": 3},  # filtered out
+            ]
+        )
+
+        response = self.client.post(
+            reverse("preferences"),
+            {
+                "date_format": DateFormatChoices.ISO_8601,
+                "time_format": TimeFormatChoices.HH_MM,
+                "auto_pause_enabled": "1",
+                "auto_pause_rules": rules_payload,
+            },
+        )
+
+        self.assertRedirects(response, reverse("preferences"))
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.date_format, DateFormatChoices.ISO_8601)
+        self.assertEqual(self.user.time_format, TimeFormatChoices.HH_MM)
+        self.assertTrue(self.user.auto_pause_in_progress_enabled)
+        self.assertEqual(
+            self.user.auto_pause_rules,
+            [
+                {"library": "all", "weeks": 20},
+                {"library": MediaTypes.MOVIE.value, "weeks": 6},
+                {"library": MediaTypes.ANIME.value, "weeks": 3},
+            ],
+        )
+
+    def test_preferences_context_limits_library_choices(self):
+        """Only eligible, active libraries are shown in the UI."""
+        self.user.anime_enabled = True
+        self.user.manga_enabled = True
+        self.user.book_enabled = True
+        self.user.comic_enabled = True
+        self.user.save(update_fields=["anime_enabled", "manga_enabled", "book_enabled", "comic_enabled"])
+
+        response = self.client.get(reverse("preferences"))
+        self.assertEqual(response.status_code, 200)
+
+        libs = response.context["active_libraries"]
+        self.assertIn(MediaTypes.MOVIE.value, libs)
+        self.assertIn(MediaTypes.SEASON.value, libs)
+        self.assertIn(MediaTypes.ANIME.value, libs)
+        self.assertIn(MediaTypes.MANGA.value, libs)
+        self.assertIn(MediaTypes.BOOK.value, libs)
+        self.assertIn(MediaTypes.COMIC.value, libs)
+        self.assertNotIn(MediaTypes.TV.value, libs)
 
 
 class DeleteImportScheduleTests(TestCase):

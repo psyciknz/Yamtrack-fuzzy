@@ -1,3 +1,4 @@
+import json
 import logging
 
 import apprise
@@ -13,10 +14,71 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from django_celery_beat.models import PeriodicTask
 
 from app.models import Item, MediaTypes
+from app.templatetags import app_tags
 from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
 from users.models import DateFormatChoices, TimeFormatChoices
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_AUTO_PAUSE_WEEKS = 16
+AUTO_PAUSE_MEDIA_TYPES = [
+    MediaTypes.GAME.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.SEASON.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+]
+
+
+def _normalize_auto_pause_rules(raw_rules: str, allowed_libraries: list[str]) -> list[dict]:
+    """Validate and normalize submitted auto-pause rules."""
+    try:
+        parsed_rules = json.loads(raw_rules or "[]")
+    except (TypeError, ValueError):
+        parsed_rules = []
+
+    if not isinstance(parsed_rules, list):
+        return []
+
+    normalized_rules: list[dict] = []
+    allowed_set = set(allowed_libraries)
+    allowed_set.add("all")
+
+    for entry in parsed_rules:
+        if not isinstance(entry, dict):
+            continue
+
+        library = entry.get("library")
+        if library not in allowed_set:
+            continue
+
+        weeks = entry.get("weeks", DEFAULT_AUTO_PAUSE_WEEKS)
+        try:
+            weeks_val = int(weeks)
+        except (TypeError, ValueError):
+            weeks_val = DEFAULT_AUTO_PAUSE_WEEKS
+
+        weeks_val = max(1, weeks_val)
+
+        normalized_entry = {
+            "library": library,
+            "weeks": weeks_val,
+        }
+
+        existing_index = next(
+            (index for index, rule in enumerate(normalized_rules) if rule["library"] == library),
+            None,
+        )
+
+        if existing_index is not None:
+            normalized_rules[existing_index] = normalized_entry
+        else:
+            normalized_rules.append(normalized_entry)
+
+    return normalized_rules
 
 
 @require_http_methods(["GET", "POST"])
@@ -244,6 +306,15 @@ def sidebar(request):
 @require_http_methods(["GET", "POST"])
 def preferences(request):
     """Render the preferences settings page."""
+    active_libraries = [
+        library
+        for library in request.user.get_active_media_types()
+        if library in AUTO_PAUSE_MEDIA_TYPES
+    ]
+    library_labels = {"all": "All Libraries"}
+    for library in active_libraries:
+        library_labels[library] = app_tags.media_type_readable_plural(library)
+
     if request.method == "POST":
         # Prevent demo users from updating preferences
         if request.user.is_demo:
@@ -254,18 +325,43 @@ def preferences(request):
         date_format = request.POST.get("date_format")
         time_format = request.POST.get("time_format")
 
+        fields_to_update = []
+
         if date_format and date_format in [choice[0] for choice in DateFormatChoices.choices]:
-            request.user.date_format = date_format
+            if request.user.date_format != date_format:
+                request.user.date_format = date_format
+                fields_to_update.append("date_format")
 
         if time_format and time_format in [choice[0] for choice in TimeFormatChoices.choices]:
-            request.user.time_format = time_format
+            if request.user.time_format != time_format:
+                request.user.time_format = time_format
+                fields_to_update.append("time_format")
 
-        # Save changes and redirect
-        request.user.save()
+        auto_pause_enabled = request.POST.get("auto_pause_enabled") == "1"
+        raw_rules = request.POST.get("auto_pause_rules", "[]")
+        normalized_rules = _normalize_auto_pause_rules(raw_rules, active_libraries)
+
+        if request.user.auto_pause_in_progress_enabled != auto_pause_enabled:
+            request.user.auto_pause_in_progress_enabled = auto_pause_enabled
+            fields_to_update.append("auto_pause_in_progress_enabled")
+
+        if request.user.auto_pause_rules != normalized_rules:
+            request.user.auto_pause_rules = normalized_rules
+            fields_to_update.append("auto_pause_rules")
+
+        if fields_to_update:
+            request.user.save(update_fields=fields_to_update)
         messages.success(request, "Preferences updated successfully.")
         return redirect("preferences")
 
-    return render(request, "users/preferences.html")
+    context = {
+        "active_libraries": active_libraries,
+        "auto_pause_enabled": request.user.auto_pause_in_progress_enabled,
+        "auto_pause_rules_json": json.dumps(request.user.auto_pause_rules or []),
+        "library_labels_json": json.dumps(library_labels),
+    }
+
+    return render(request, "users/preferences.html", context)
 
 
 @require_GET
