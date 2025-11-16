@@ -27,8 +27,38 @@ Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, vide
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/3f0ad1dd-8121-4d31-8641-a6e60fc9d4c4" /> | <img alt="Screenshot 2025-11-15 at 8 17 50 PM" src="https://github.com/user-attachments/assets/8222884e-ac1e-417e-be14-fa744918755a" /> |
 
+## 📱 Repo Specific Installation
+I haven't figured out the workflow to publish Docker containers yet. Until then, use the following commands to build locally:
 
+```bash
+cd /mnt/users/appdata
+git clone https://github.com/dannyvfilms/Yamtrack.git
+cd Yamtrack
 
+cat > .env <<EOF
+TMDB_API=CHANGE_ME
+IGDB_ID=CHANGE_ME
+IGDB_SECRET=CHANGE_ME
+SECRET=$(openssl rand -hex 32)
+DEBUG=FALSE
+REDIS_URL=CHANGE_ME
+ALLOWED_HOSTS=CHANGE_ME
+EOF
+
+git checkout release
+git pull origin release
+docker compose build --no-cache
+docker compose up -d
+```
+
+To update your container:
+```
+cd /mnt/users/appdata/Yamtrack
+git checkout release
+git pull origin release
+docker compose build --no-cache
+```
+Then recreate your container with the new image (e.g. "Recreate" in Portainer).
 
 ## 🚀 Demo
 
