@@ -853,6 +853,30 @@ class Media(models.Model):
         self.save()
         logger.info("Decreased progress of %s to %s", self, self.progress)
 
+    # Add this method to your existing Media class (the abstract one)
+    # Since Media is abstract, add this to the Media class around line 394
+    def get_media_type_display(self):
+        """Return a nice display name for media type."""
+        type_mapping = {
+            MediaTypes.MOVIE.value: "Movie",
+            MediaTypes.TV.value: "TV Show",
+            MediaTypes.SEASON.value: "Season",
+            MediaTypes.EPISODE.value: "Episode",
+            MediaTypes.ANIME.value: "Anime",
+            MediaTypes.MANGA.value: "Manga",
+            MediaTypes.BOOK.value: "Book",
+            MediaTypes.GAME.value: "Game",
+            MediaTypes.COMIC.value: "Comic",
+        }
+        return type_mapping.get(self.item.media_type, self.item.media_type.title())
+
+    @property
+    def poster_url(self):
+        """Return the poster URL or None if not available."""
+        if hasattr(self, "poster_path") and self.poster_path:
+            return f"https://image.tmdb.org/t/p/w500{self.poster_path}"
+        return None
+
 
 class BasicMedia(Media):
     """Model for basic media types."""

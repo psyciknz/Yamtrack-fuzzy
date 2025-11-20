@@ -1470,3 +1470,28 @@ class SearchParentViewTests(TestCase):
 
         # Should find no results
         self.assertEqual(len(response.context["results"]), 0)
+
+
+class HistoryViewTests(TestCase):
+    """Test the history view."""
+
+    def setUp(self):
+        """Create a user and log in."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def test_history_view_default_filter(self):
+        """Test history view with default 30-day filter."""
+        response = self.client.get(reverse("history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/history.html")
+        self.assertEqual(response.context["current_filter"], "30")
+
+    def test_history_view_all_time_filter(self):
+        """Test history view with all-time filter."""
+        response = self.client.get(reverse("history") + "?days=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_filter"], "all")
