@@ -37,6 +37,25 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         self._process_media(payload, user, ids)
 
+    def _process_media(self, payload, user, ids):
+        """Route processing based on media type, extracting season/episode for TV."""
+        media_type = self._get_media_type(payload)
+        if not media_type:
+            logger.debug("Ignoring unsupported media type")
+            return
+
+        title = self._get_media_title(payload)
+        logger.info("Received webhook for %s: %s", media_type, title)
+
+        if media_type == MediaTypes.TV.value:
+            # Extract season/episode from Plex payload
+            season_number, episode_number = self._extract_season_episode_from_payload(
+                payload
+            )
+            self._process_tv(payload, user, ids, season_number, episode_number)
+        elif media_type == MediaTypes.MOVIE.value:
+            self._process_movie(payload, user, ids)
+
     def _is_supported_event(self, event_type):
         return event_type in ("media.scrobble", "media.play")
 
@@ -96,3 +115,18 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             "imdb_id": get_id("imdb"),
             "tvdb_id": get_id("tvdb"),
         }
+
+    def _extract_season_episode_from_payload(self, payload):
+        """Extract season and episode numbers from Plex payload."""
+        metadata = payload.get("Metadata", {})
+        season_number = metadata.get("parentIndex")
+        episode_number = metadata.get("index")
+        
+        # Convert to int if they exist
+        try:
+            season_number = int(season_number) if season_number is not None else None
+            episode_number = int(episode_number) if episode_number is not None else None
+        except (ValueError, TypeError):
+            return None, None
+        
+        return season_number, episode_number
