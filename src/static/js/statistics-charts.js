@@ -484,13 +484,21 @@ document.addEventListener("DOMContentLoaded", function () {
             startIsoLocal = labels[0];
             endIsoLocal = labels[labels.length - 1];
           }
-          if (!startIsoLocal || !endIsoLocal) return 'month';
+          if (!startIsoLocal || !endIsoLocal) {
+            // If we only have labels and it's a short range, still favor day buckets
+            if (labels && labels.length && labels.length <= 45) return 'day';
+            return 'month';
+          }
           const start = new Date(startIsoLocal);
           const end = new Date(endIsoLocal);
           const msPerDay = 24 * 60 * 60 * 1000;
           const spanDays = Math.ceil((end - start) / msPerDay) + 1;
 
           const maxBars = 36;
+
+          // If the backend already gave us daily labels and there aren't many,
+          // keep the day granularity even if timezone math nudges spanDays upward.
+          if (labels && labels.length && labels.length <= 45) return 'day';
 
           // Day: one label per day
           if (spanDays <= 31) return 'day';
