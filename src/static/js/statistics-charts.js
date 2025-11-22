@@ -508,7 +508,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         function getWeekStartIso(d) {
-          const date = new Date(d);
+          const date = parseIsoDateLocal(d);
           // ISO week start: Monday
           const day = date.getDay(); // 0 Sun .. 6 Sat
           const diff = (day + 6) % 7; // days since Monday
@@ -528,6 +528,14 @@ document.addEventListener("DOMContentLoaded", function () {
           return String(date.getFullYear());
         }
 
+        function parseIsoDateLocal(iso) {
+          const parts = iso.split("-");
+          const y = Number(parts[0]);
+          const m = Number(parts[1]);
+          const d = Number(parts[2] || 1);
+          return new Date(y, m - 1, d); // Local time, avoids TZ shifting backward
+        }
+
         function formatBucketLabel(bucket, key, startIso, endIso) {
           const nowYear = new Date().getFullYear();
           let startYear = null;
@@ -540,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function () {
           }
 
           if (bucket === 'day') {
-            const d = new Date(key);
+            const d = parseIsoDateLocal(key);
             const opts = { month: 'short', day: 'numeric' };
             // include year if span crosses years or not current year
             if (startYear && endYear && startYear !== endYear) {
@@ -553,7 +561,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           if (bucket === 'week') {
             // key is ISO date for week start (YYYY-MM-DD)
-            const d = new Date(key);
+            const d = parseIsoDateLocal(key);
             const opts = { month: 'short', day: 'numeric' };
             if (startYear && endYear && startYear !== endYear) {
               opts.year = 'numeric';
@@ -567,7 +575,7 @@ document.addEventListener("DOMContentLoaded", function () {
           if (bucket === 'month') {
             // key is YYYY-MM
             const [yy, mm] = key.split('-');
-            const date = new Date(`${key}-01`);
+            const date = new Date(Number(yy), Number(mm) - 1, 1);
             // If the selected range is within the current year, show full month name only
             if (startYear && endYear && startYear === endYear && startYear === nowYear) {
               return date.toLocaleDateString(navigator.language || 'en-US', { month: 'long' });
