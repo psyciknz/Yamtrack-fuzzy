@@ -416,9 +416,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     scoreChartOptions.plugins.title = {
       display: true,
-      text: `Average Score: ${scoreData.average_score} (${
-        scoreData.total_scored
-      } ${scoreData.total_scored === 1 ? "item" : "items"})`,
+      text: `Average Score: ${scoreData.average_score} (${scoreData.total_scored
+        } ${scoreData.total_scored === 1 ? "item" : "items"})`,
       color: "#D1D5DB",
       padding: { bottom: 10 },
       font: { size: 14 },
@@ -515,13 +514,13 @@ document.addEventListener("DOMContentLoaded", function () {
           const diff = (day + 6) % 7; // days since Monday
           const wk = new Date(date);
           wk.setDate(date.getDate() - diff);
-          wk.setHours(0,0,0,0);
-          return wk.toISOString().slice(0,10);
+          wk.setHours(0, 0, 0, 0);
+          return wk.toISOString().slice(0, 10);
         }
 
         function getMonthIso(d) {
           const date = new Date(d);
-          return date.toISOString().slice(0,7); // YYYY-MM
+          return date.toISOString().slice(0, 7); // YYYY-MM
         }
 
         function getYearIso(d) {
@@ -630,7 +629,7 @@ document.addEventListener("DOMContentLoaded", function () {
           return { labels: newLabels, datasets: newDatasets };
         }
 
-  const bucket = chooseBucket(startIso, endIso, dailyData.labels);
+        const bucket = chooseBucket(startIso, endIso, dailyData.labels);
         const aggregated = aggregateDailyToBucket(dailyData, bucket);
         const dailyOptions = JSON.parse(JSON.stringify(barChartConfig));
         dailyOptions.scales.x.stacked = true;

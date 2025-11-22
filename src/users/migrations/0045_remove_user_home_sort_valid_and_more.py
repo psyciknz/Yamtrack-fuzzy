@@ -15,21 +15,17 @@ class Migration(migrations.Migration):
             model_name="user",
             name="home_sort_valid",
         ),
-        migrations.RemoveConstraint(
-            model_name="user",
-            name="home_sort_valid",
-        ),
         migrations.AddField(
             model_name="user",
             name="activity_history_view",
             field=models.CharField(
                 choices=[
-                    ("activity_heatmap", "Activity Heatmap"),
-                    ("stacked_bar_chart", "Stacked Bar Chart"),
+                    ("heatmap", "Activity Heatmap"),
+                    ("stacked", "Stacked Bar Chart"),
                 ],
-                default="activity_heatmap",
-                help_text="How to render Activity History on the Statistics page",
-                max_length=30,
+                default="heatmap",
+                help_text="Which activity history visualization to show on the Statistics page",
+                max_length=20,
             ),
         ),
         migrations.AddConstraint(
@@ -38,7 +34,7 @@ class Migration(migrations.Migration):
                 condition=models.Q(
                     (
                         "activity_history_view__in",
-                        ["activity_heatmap", "stacked_bar_chart"],
+                        ["heatmap", "stacked"],
                     )
                 ),
                 name="activity_history_view_valid",
