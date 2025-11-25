@@ -260,6 +260,10 @@ def media_search(request):
 
     data = services.search(media_type, query, page, source)
 
+    # Enrich search results with user tracking data
+    if data.get("results"):
+        data["results"] = helpers.enrich_items_with_user_data(request, data["results"])
+
     context = {
         "user": request.user,
         "data": data,
@@ -287,29 +291,35 @@ def media_details(
 
     # Apply the same rating aggregation logic as in the media list
     if user_medias and len(user_medias) > 1:
-        # Find the most recent rating among all entries
         latest_rating = None
         latest_activity = None
-        
+
         for user_media in user_medias:
             if user_media.score is not None:
-                # Determine the most recent activity for this entry
-                entry_activity = None
                 if user_media.end_date:
                     entry_activity = user_media.end_date
                 elif user_media.progressed_at:
                     entry_activity = user_media.progressed_at
                 else:
                     entry_activity = user_media.created_at
-                
-                # If this entry has more recent activity, use its rating
+
                 if latest_activity is None or entry_activity > latest_activity:
                     latest_activity = entry_activity
                     latest_rating = user_media.score
-        
-        # Update the current_instance score to use the most recent rating
+
         if latest_rating is not None:
             current_instance.score = latest_rating
+
+    # Enrich related items with user tracking data
+    if media_metadata.get("related"):
+        for section_name, related_items in media_metadata["related"].items():
+            if related_items:
+                media_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        request,
+                        related_items,
+                    )
+                )
 
     context = {
         "user": request.user,
@@ -382,6 +392,17 @@ def season_details(
             season_metadata,
             episodes_in_db,
         )
+
+    # Enrich related items with user tracking data
+    if season_metadata.get("related"):
+        for section_name, related_items in season_metadata["related"].items():
+            if related_items:
+                season_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        request,
+                        related_items,
+                    )
+                )
 
     context = {
         "user": request.user,
@@ -673,16 +694,18 @@ def media_delete(request):
     """Delete media data from the database."""
     instance_id = request.POST["instance_id"]
     media_type = request.POST["media_type"]
+    model = apps.get_model(app_label="app", model_name=media_type)
 
-    media = BasicMedia.objects.get_media(
-        request.user,
-        media_type,
-        instance_id,
-    )
-    if media:
+    try:
+        media = BasicMedia.objects.get_media(
+            request.user,
+            media_type,
+            instance_id,
+        )
         media.delete()
         logger.info("%s deleted successfully.", media)
-    else:
+
+    except model.DoesNotExist:
         logger.warning("The %s was already deleted before.", media_type)
 
     return helpers.redirect_back(request)
