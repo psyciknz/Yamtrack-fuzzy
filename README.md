@@ -28,6 +28,8 @@ Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, vide
 | <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/3f0ad1dd-8121-4d31-8641-a6e60fc9d4c4" /> | <img alt="Screenshot 2025-11-15 at 8 17 50 PM" src="https://github.com/user-attachments/assets/8222884e-ac1e-417e-be14-fa744918755a" /> |
 
 ## 📱 Repo Specific Installation
+Docker image is now available: ```docker pull ghcr.io/dannyvfilms/yamtrack:release```
+
 I haven't figured out the workflow to publish Docker containers yet. Until then, use the following commands to build locally:
 
 ```bash
