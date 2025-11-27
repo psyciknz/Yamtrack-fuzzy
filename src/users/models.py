@@ -113,6 +113,13 @@ class ActivityHistoryViewChoices(models.TextChoices):
     HEATMAP = "heatmap", "Activity Heatmap"
     STACKED = "stacked", "Stacked Bar Chart"
 
+
+class GameLoggingStyleChoices(models.TextChoices):
+    """Choices for how game history entries are displayed."""
+
+    SESSIONS = "sessions", "Sessions"
+    REPEATS = "repeats", "Repeats"
+
 class User(AbstractUser):
     """Custom user model."""
 
@@ -330,6 +337,13 @@ class User(AbstractUser):
         max_length=20,
         default=TimeFormatChoices.SYSTEM_DEFAULT,
         choices=TimeFormatChoices.choices,
+    )
+
+    game_logging_style = models.CharField(
+        max_length=20,
+        default=GameLoggingStyleChoices.REPEATS,
+        choices=GameLoggingStyleChoices.choices,
+        help_text="How game entries are displayed on the History page",
     )
 
     activity_history_view = models.CharField(

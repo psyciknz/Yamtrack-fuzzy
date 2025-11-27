@@ -125,7 +125,7 @@
       </div>
       
       {# Enhanced aggregated data display for duplicates #}
-      {% if media.repeats > 1 %}
+      {% if media.repeats > 1 and not (media.item.media_type == MediaTypes.GAME.value and user.game_logging_style == 'sessions') %}
         <div class="space-y-1 text-xs text-gray-400">
           {% if media.aggregated_progress and media.item.media_type != MediaTypes.MOVIE.value %}
             <div class="text-center">

@@ -378,7 +378,7 @@
                      :class="{ 'rotate-180': showRepeats }">
                   <path d="m6 9 6 6 6-6"></path>
                 </svg>
-                Show Repeats ({{ user_medias|length|add:"-1" }})
+                {% if media_type == MediaTypes.GAME.value %}Show Sessions{% else %}Show Repeats{% endif %} ({{ user_medias|length|add:"-1" }})
               </button>
 
               <div x-show="showRepeats" class="space-y-2 mt-4">

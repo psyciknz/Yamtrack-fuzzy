@@ -367,6 +367,11 @@ def icon(name, is_active, extra_classes="w-5 h-5"):
                <line x1="12" x2="12" y1="20" y2="4"></line>
                <line x1="6" x2="6" y1="20" y2="14"></line>"""
         ),
+        "history": (
+            """<path d="M3 3v5h5"></path>
+               <path d="M3.05 13a9 9 0 1 0 .5-5.5"></path>
+               <path d="M12 7v5l3 3"></path>"""
+        ),
         "lists": (
             """<path d="M12 10v6"></path>
                <path d="M9 13h6"></path>

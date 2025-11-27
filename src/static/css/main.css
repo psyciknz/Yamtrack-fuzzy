@@ -99,6 +99,7 @@
     --default-mono-font-family: var(--font-mono);
   }
 }
+
 @layer base {
   *, ::after, ::before, ::backdrop, ::file-selector-button {
     box-sizing: border-box;
@@ -3460,6 +3461,32 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* History page pagination spacing tweaks */
+.history-page .history-pagination {
+  padding-top: 0.25rem;
+}
+@media (min-width: 769px) {
+  .history-page .history-pagination {
+    padding-top: 0.5rem;
+  }
+}
+
+/* Safari/edge fix: keep history date header on one line */
+.history-date-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+/* History page container padding/margin reset */
+.history-page-container {
+  margin-top: 0 !important;
+  padding-top: 1rem !important;
+  padding-bottom: 1rem !important;
 }
 @layer properties {
   @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {

@@ -62,6 +62,10 @@ This document explains how media types are defined and wired through the app so 
 - Search selector excludes seasons/episodes by design (`EXCLUDED_SEARCH_TYPES` in `users/models.py`).
 - Icons/colors/units/date_key must exist in `media_type_config` or templates/notifications will fail.
 - Runtime defaults: 30m TMDB, 23m MAL; `999999` runtime is treated as unknown/skip in time-left/stats.
+- History view:
+  - Movies show a play-count badge derived from the user’s local play history (aggregated by media_id/source) and default to `1 play` if no repeats are found.
+  - Games obey the user preference `game_logging_style` (`sessions` vs `repeats`): sessions put the full progress on the end date with an hour-only badge; repeats spread progress evenly across the date range and keep the per-day chip. Games without start/end dates are excluded from history to avoid pinning them to “today.”
+  - History cache key includes the logging style; preference changes invalidate and trigger a background refresh to keep the view instantaneous.
 - Statistics spotlight cards and some UI badges are hard-coded for specific types; new types need explicit template additions there.
 - Calendar events for comics have 1-year look-back; manga from MangaUpdates uses sentinel datetime; unknown date_key causes release generation to fail.
 

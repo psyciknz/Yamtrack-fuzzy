@@ -16,7 +16,12 @@ from django_celery_beat.models import PeriodicTask
 from app.models import Item, MediaTypes
 from app.templatetags import app_tags
 from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
-from users.models import DateFormatChoices, TimeFormatChoices, ActivityHistoryViewChoices
+from users.models import (
+    ActivityHistoryViewChoices,
+    DateFormatChoices,
+    GameLoggingStyleChoices,
+    TimeFormatChoices,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -325,6 +330,7 @@ def preferences(request):
         date_format = request.POST.get("date_format")
         time_format = request.POST.get("time_format")
         activity_history_view = request.POST.get("activity_history_view")
+        game_logging_style = request.POST.get("game_logging_style")
 
         fields_to_update = []
 
@@ -345,6 +351,18 @@ def preferences(request):
             if request.user.activity_history_view != activity_history_view:
                 request.user.activity_history_view = activity_history_view
                 fields_to_update.append("activity_history_view")
+
+        if (
+            game_logging_style
+            and game_logging_style in [choice[0] for choice in GameLoggingStyleChoices.choices]
+        ):
+            if request.user.game_logging_style != game_logging_style:
+                request.user.game_logging_style = game_logging_style
+                fields_to_update.append("game_logging_style")
+                from app import history_cache
+
+                history_cache.invalidate_history_cache(request.user.id)
+                history_cache.schedule_history_refresh(request.user.id, game_logging_style, debounce_seconds=0)
 
         auto_pause_enabled = request.POST.get("auto_pause_enabled") == "1"
         raw_rules = request.POST.get("auto_pause_rules", "[]")

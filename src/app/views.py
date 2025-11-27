@@ -5,7 +5,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.core.cache import cache
-from django.core.paginator import Paginator
+from django.core.paginator import EmptyPage, Paginator
 from django.db import IntegrityError
 from django.db.models import prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -16,10 +16,20 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import cache_utils, helpers, history_processor
+from app import cache_utils, helpers, history_cache, history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
-from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
+from app.models import (
+    TV,
+    BasicMedia,
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    Season,
+    Sources,
+    Status,
+)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
@@ -960,6 +970,43 @@ def delete_history_record(request, media_type, history_id):
             str(request.user),
         )
         return HttpResponse("Record not found", status=404)
+
+
+@require_GET
+def history(request):
+    """Show a day-by-day history of episode and movie plays."""
+    history_days_all = history_cache.get_history_days(request.user)
+
+    paginator = Paginator(history_days_all, history_cache.HISTORY_DAYS_PER_PAGE)
+
+    if paginator.count == 0:
+        page_obj = None
+        history_days = []
+        current_page = 1
+    else:
+        try:
+            page_number = int(request.GET.get("page", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+
+        try:
+            page_obj = paginator.page(page_number)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+
+        history_days = page_obj.object_list
+        current_page = page_obj.number
+
+    context = {
+        "user": request.user,
+        "history_days": history_days,
+        "page_obj": page_obj,
+        "current_page": current_page,
+        "total_pages": paginator.num_pages,
+        "total_days": paginator.count,
+        "days_per_page": paginator.per_page,
+    }
+    return render(request, "app/history.html", context)
 
 
 @require_GET

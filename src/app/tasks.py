@@ -4,6 +4,7 @@ import logging
 from celery import shared_task
 from django.db import transaction
 
+from app import history_cache
 from app.models import Item, MediaTypes
 from app.providers import services
 
@@ -156,6 +157,12 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
             "next_batch_scheduled": False,
             "completion_message": "All runtime data populated successfully!"
         }
+
+
+@shared_task
+def refresh_history_cache_task(user_id: int):
+    """Rebuild the cached History page for a user."""
+    history_cache.refresh_history_cache(user_id)
 
 
 @shared_task
