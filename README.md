@@ -26,6 +26,10 @@ Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, vide
 | Refined Mobile Layout Changes                                                                                         | Optionally Convert In Progress to Paused after Delay                                                                                    |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/3f0ad1dd-8121-4d31-8641-a6e60fc9d4c4" /> | <img alt="Screenshot 2025-11-15 at 8 17 50 PM" src="https://github.com/user-attachments/assets/8222884e-ac1e-417e-be14-fa744918755a" /> |
+| Added History Page                                                                                         | Placeholder for Second Screenshot                                                                                    |
+| <img  alt="Screenshot 2025-11-26 at 6 12 33 PM" src="https://github.com/user-attachments/assets/65ae9a2c-ad33-4129-85e4-4653ef48658a" />
+ | <img/> |
+
 
 ## 📱 Repo Specific Installation
 Docker image is now available: ```docker pull ghcr.io/dannyvfilms/yamtrack:release```
