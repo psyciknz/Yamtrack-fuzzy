@@ -269,6 +269,21 @@ class MediaListViewTests(TestCase):
         self.assertEqual(self.user.movie_sort, "score")
         self.assertEqual(self.user.movie_layout, "table")
 
+    def test_media_list_persists_direction(self):
+        """Sort direction should be remembered across requests."""
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+
+        first_response = self.client.get(f"{url}?sort=title&direction=asc")
+        self.assertEqual(first_response.context["current_direction"], "asc")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_sort, "title")
+        self.assertEqual(self.user.movie_direction, "asc")
+
+        second_response = self.client.get(url)
+        self.assertEqual(second_response.context["current_sort"], "title")
+        self.assertEqual(second_response.context["current_direction"], "asc")
+
     @patch("app.views.services.get_media_metadata")
     @patch("app.models.providers.services.get_media_metadata")
     def test_time_left_cache_invalidated_on_episode_watch(

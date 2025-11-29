@@ -103,6 +103,7 @@ def progress_edit(request, media_type, instance_id):
 @require_GET
 def media_list(request, media_type):
     """Return the media list page."""
+    previous_sort = getattr(request.user, f"{media_type}_sort")
     layout = request.user.update_preference(
         f"{media_type}_layout",
         request.GET.get("layout"),
@@ -111,17 +112,28 @@ def media_list(request, media_type):
         f"{media_type}_sort",
         request.GET.get("sort"),
     )
-    direction = BasicMedia.objects.resolve_direction(
-        sort_filter,
-        request.GET.get("direction"),
-    )
+    direction_param = request.GET.get("direction")
+    direction_field = f"{media_type}_direction"
     
     # If time_left sort is selected for non-TV media types, fallback to default
     if sort_filter == "time_left" and media_type != MediaTypes.TV.value:
         sort_filter = "title"  # Default fallback
         # Update the user's preference to the fallback
         request.user.update_preference(f"{media_type}_sort", "title")
-        direction = BasicMedia.objects.resolve_direction(sort_filter, direction)
+        # Reset direction to the default for the fallback sort
+        direction_param = None
+
+    # Resolve and persist sort direction with the same preference flow as sort
+    direction_pref = getattr(request.user, direction_field, None)
+    if direction_param is not None:
+        direction = BasicMedia.objects.resolve_direction(sort_filter, direction_param)
+        request.user.update_preference(direction_field, direction)
+    else:
+        if sort_filter != previous_sort or direction_pref is None:
+            direction = BasicMedia.objects.resolve_direction(sort_filter, None)
+        else:
+            direction = BasicMedia.objects.resolve_direction(sort_filter, direction_pref)
+        request.user.update_preference(direction_field, direction)
     status_filter = request.user.update_preference(
         f"{media_type}_status",
         request.GET.get("status"),

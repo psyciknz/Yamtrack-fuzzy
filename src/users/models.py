@@ -52,6 +52,13 @@ class MediaStatusChoices(models.TextChoices):
     DROPPED = Status.DROPPED.value, Status.DROPPED.label
 
 
+class DirectionChoices(models.TextChoices):
+    """Choices for sort direction options."""
+
+    ASC = "asc", "Ascending"
+    DESC = "desc", "Descending"
+
+
 class LayoutChoices(models.TextChoices):
     """Choices for media list layout options."""
 
@@ -143,6 +150,11 @@ class User(AbstractUser):
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
     )
+    tv_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
     tv_sort = models.CharField(
         max_length=20,
         default=MediaSortChoices.SCORE,
@@ -159,6 +171,11 @@ class User(AbstractUser):
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    season_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     season_sort = models.CharField(
         max_length=20,
@@ -177,6 +194,11 @@ class User(AbstractUser):
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
     )
+    movie_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
     movie_sort = models.CharField(
         max_length=20,
         default=MediaSortChoices.SCORE,
@@ -193,6 +215,11 @@ class User(AbstractUser):
         max_length=20,
         default=LayoutChoices.TABLE,
         choices=LayoutChoices.choices,
+    )
+    anime_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     anime_sort = models.CharField(
         max_length=20,
@@ -211,6 +238,11 @@ class User(AbstractUser):
         default=LayoutChoices.TABLE,
         choices=LayoutChoices.choices,
     )
+    manga_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
     manga_sort = models.CharField(
         max_length=20,
         default=MediaSortChoices.SCORE,
@@ -227,6 +259,11 @@ class User(AbstractUser):
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    game_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     game_sort = models.CharField(
         max_length=20,
@@ -245,6 +282,11 @@ class User(AbstractUser):
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
     )
+    book_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
     book_sort = models.CharField(
         max_length=20,
         default=MediaSortChoices.SCORE,
@@ -261,6 +303,11 @@ class User(AbstractUser):
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    comic_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     comic_sort = models.CharField(
         max_length=20,
@@ -408,28 +455,60 @@ class User(AbstractUser):
                 condition=models.Q(tv_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="tv_direction_valid",
+                condition=models.Q(tv_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="season_sort_valid",
                 condition=models.Q(season_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="season_direction_valid",
+                condition=models.Q(season_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="movie_sort_valid",
                 condition=models.Q(movie_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="movie_direction_valid",
+                condition=models.Q(movie_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="anime_sort_valid",
                 condition=models.Q(anime_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="anime_direction_valid",
+                condition=models.Q(anime_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="manga_sort_valid",
                 condition=models.Q(manga_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="manga_direction_valid",
+                condition=models.Q(manga_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="game_sort_valid",
                 condition=models.Q(game_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="game_direction_valid",
+                condition=models.Q(game_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="book_sort_valid",
                 condition=models.Q(book_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="book_direction_valid",
+                condition=models.Q(book_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="comic_direction_valid",
+                condition=models.Q(comic_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="calendar_layout_valid",
