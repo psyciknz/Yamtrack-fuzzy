@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_AUTO_PAUSE_WEEKS = 16
 AUTO_PAUSE_MEDIA_TYPES = [
     MediaTypes.GAME.value,
+    MediaTypes.BOARDGAME.value,
     MediaTypes.MOVIE.value,
     MediaTypes.SEASON.value,
     MediaTypes.ANIME.value,

@@ -47,6 +47,7 @@ class Sources(models.TextChoices):
     OPENLIBRARY = "openlibrary", "Open Library"
     HARDCOVER = "hardcover", "Hardcover"
     COMICVINE = "comicvine", "Comic Vine"
+    BGG = "bgg", "BoardGameGeek"
     MANUAL = "manual", "Manual"
 
 
@@ -62,6 +63,7 @@ class MediaTypes(models.TextChoices):
     GAME = "game", "Game"
     BOOK = "book", "Book"
     COMIC = "comic", "Comic"
+    BOARDGAME = "boardgame", "Board Game"
 
 
 class Item(CalendarTriggerMixin, models.Model):
@@ -1896,6 +1898,25 @@ class Game(Media):
         self.progress -= 30
         self.save()
         logger.info("Changed playtime of %s to %s", self, self.formatted_progress)
+
+
+class BoardGame(Media):
+    """Model for board games."""
+
+    tracker = FieldTracker()
+
+    @property
+    def formatted_progress(self):
+        """Return progress as play count."""
+        plays = self.progress or 0
+        return f"{plays} play{'s' if plays != 1 else ''}"
+
+    @property
+    def formatted_aggregated_progress(self):
+        """Return aggregated progress as play count."""
+        plays = getattr(self, "aggregated_progress", None)
+        value = plays if plays is not None else self.progress
+        return f"{value} play{'s' if value != 1 else ''}"
 
 
 class Book(Media):

@@ -797,6 +797,25 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date):
                     total_minutes += media.progress
                 continue
 
+            if media_type == MediaTypes.BOARDGAME.value:
+                if (
+                    media.end_date
+                    and start_date
+                    and end_date
+                    and start_date <= media.end_date <= end_date
+                ):
+                    total_minutes += media.progress
+                elif (
+                    media.start_date
+                    and start_date
+                    and end_date
+                    and start_date <= media.start_date <= end_date
+                ):
+                    total_minutes += media.progress
+                elif not start_date and not end_date:
+                    total_minutes += media.progress
+                continue
+
             if not _is_media_in_date_range(media, start_date, end_date):
                 continue
 
@@ -811,10 +830,13 @@ def get_hours_per_media_type(user_media, start_date, end_date, minutes_per_type=
     """Calculate total hours watched per media type within the date range."""
     if minutes_per_type is None:
         minutes_per_type = calculate_minutes_per_media_type(user_media, start_date, end_date)
-    return {
-        media_type: _format_hours_minutes(total_minutes)
-        for media_type, total_minutes in minutes_per_type.items()
-    }
+    hours = {}
+    for media_type, total_minutes in minutes_per_type.items():
+        if media_type == MediaTypes.BOARDGAME.value:
+            hours[media_type] = f"{total_minutes} play{'s' if total_minutes != 1 else ''}"
+        else:
+            hours[media_type] = _format_hours_minutes(total_minutes)
+    return hours
 
 
 
@@ -1455,6 +1477,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
             MediaTypes.GAME.value,
             MediaTypes.BOOK.value,
             MediaTypes.COMIC.value,
+            MediaTypes.BOARDGAME.value,
         ):
             for media in media_list:
                 total_progress = getattr(media, "progress", 0) or 0
@@ -1515,7 +1538,7 @@ def get_top_played_media(user_media, start_date, end_date):
     top_played = {}
     
     # Define the media types we want to show
-    target_media_types = ['movie', 'tv', 'game', 'anime']
+    target_media_types = ["movie", "tv", "game", "boardgame", "anime"]
     
     for media_type, media_list in user_media.items():
         # Normalize media type to match our target types
@@ -1591,15 +1614,36 @@ def get_top_played_media(user_media, start_date, end_date):
                     elif not start_date and not end_date:
                         # All time
                         total_time_minutes += media.progress
+                elif normalized_type == "boardgame":
+                    if (
+                        media.end_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.end_date <= end_date
+                    ):
+                        total_time_minutes += media.progress
+                    elif (
+                        media.start_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.start_date <= end_date
+                    ):
+                        total_time_minutes += media.progress
+                    elif not start_date and not end_date:
+                        total_time_minutes += media.progress
                 else:
                     # For movies and other media types, get runtime from metadata
                     total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, logger)
                 
                 if total_time_minutes > 0:
+                    formatted_duration = minutes_to_hhmm(total_time_minutes)
+                    if normalized_type == "boardgame":
+                        formatted_duration = f"{total_time_minutes} play{'s' if total_time_minutes != 1 else ''}"
+
                     media_with_progress.append({
                         'media': media,
                         'total_time_minutes': total_time_minutes,
-                        'formatted_duration': minutes_to_hhmm(total_time_minutes),
+                        'formatted_duration': formatted_duration,
                         'episode_count': episode_count,
                         'last_activity': media.end_date or media.start_date or media.created_at,
                         'play_count': 1,

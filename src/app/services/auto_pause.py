@@ -8,6 +8,7 @@ from simple_history.utils import bulk_update_with_history
 
 from app.models import (
     Anime,
+    BoardGame,
     Book,
     Comic,
     Game,
@@ -28,6 +29,7 @@ TARGET_MODEL_MAP = {
     MediaTypes.MANGA.value: Manga,
     MediaTypes.BOOK.value: Book,
     MediaTypes.COMIC.value: Comic,
+    MediaTypes.BOARDGAME.value: BoardGame,
 }
 
 
@@ -148,4 +150,3 @@ def _get_last_activity(media):
             return value
 
     return None
-

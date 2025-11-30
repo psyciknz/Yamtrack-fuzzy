@@ -5,6 +5,7 @@ from app import config
 from app.models import (
     TV,
     Anime,
+    BoardGame,
     Book,
     Comic,
     Episode,
@@ -292,6 +293,21 @@ class GameForm(MediaForm):
         """Bind form to model."""
 
         model = Game
+
+
+class BoardgameForm(MediaForm):
+    """Form for board games."""
+
+    class Meta(MediaForm.Meta):
+        """Bind form to model."""
+
+        model = BoardGame
+        labels = {
+            "progress": (
+                f"Progress "
+                f"({config.get_unit(MediaTypes.BOARDGAME.value, short=False)}s)"
+            ),
+        }
 
 
 class BookForm(MediaForm):

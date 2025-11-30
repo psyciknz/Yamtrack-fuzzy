@@ -282,6 +282,29 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Board Games
+    boardgame_enabled = models.BooleanField(default=True)
+    boardgame_layout = models.CharField(
+        max_length=20,
+        default=LayoutChoices.GRID,
+        choices=LayoutChoices.choices,
+    )
+    boardgame_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
+    boardgame_sort = models.CharField(
+        max_length=20,
+        default=MediaSortChoices.SCORE,
+        choices=MediaSortChoices.choices,
+    )
+    boardgame_status = models.CharField(
+        max_length=20,
+        default=MediaStatusChoices.ALL,
+        choices=MediaStatusChoices.choices,
+    )
+
     # Media type preferences: Books
     book_enabled = models.BooleanField(default=True)
     book_layout = models.CharField(
@@ -508,6 +531,22 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="game_direction_valid",
                 condition=models.Q(game_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_layout_valid",
+                condition=models.Q(boardgame_layout__in=LayoutChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_sort_valid",
+                condition=models.Q(boardgame_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_direction_valid",
+                condition=models.Q(boardgame_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_status_valid",
+                condition=models.Q(boardgame_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="book_sort_valid",

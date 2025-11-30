@@ -11,7 +11,7 @@ from django.db import models
 from django.utils import formats, timezone
 
 from app import helpers
-from app.models import Episode, Game, Item, MediaTypes, Movie
+from app.models import BoardGame, Episode, Game, Item, MediaTypes, Movie
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,12 @@ def _format_game_hours(minutes: int) -> str:
     if minutes >= 60:
         return f"{minutes // 60}h"
     return f"{minutes}min"
+
+
+def _format_boardgame_plays(plays: int) -> str:
+    """Return a play-count label."""
+    plays = plays or 0
+    return f"{plays} play{'s' if plays != 1 else ''}"
 
 
 def _build_episode_entry(episode, episode_title_map=None):
@@ -202,6 +208,11 @@ def build_history_days(user):
         .select_related("item")
         .order_by("-end_date", "-created_at")
     )
+    boardgames = (
+        BoardGame.objects.filter(user=user)
+        .select_related("item")
+        .order_by("-end_date", "-created_at")
+    )
 
     entries = []
 
@@ -295,6 +306,43 @@ def build_history_days(user):
                     "runtime_display": helpers.minutes_to_hhmm(runtime_minutes) if runtime_minutes else None,
                 },
             )
+        for boardgame in boardgames:
+            if not (boardgame.start_date or boardgame.end_date):
+                continue
+
+            activity_dt = boardgame.end_date or boardgame.start_date or boardgame.created_at
+            played_at_local = _localize_datetime(activity_dt)
+            if not played_at_local:
+                continue
+            plays = boardgame.progress or 0
+            start_local = _localize_datetime(boardgame.start_date).date() if boardgame.start_date else None
+            end_local = (
+                _localize_datetime(boardgame.end_date).date()
+                if boardgame.end_date
+                else played_at_local.date()
+            )
+            if not start_local:
+                start_local = end_local
+            date_range_display = f"{formats.date_format(start_local, 'M j')} - {formats.date_format(end_local, 'M j')}"
+
+            progress_display = _format_boardgame_plays(plays)
+
+            entries.append(
+                {
+                    "media_type": MediaTypes.BOARDGAME.value,
+                    "item": boardgame.item,
+                    "poster": boardgame.item.image or settings.IMG_NONE,
+                    "title": boardgame.item.title,
+                    "display_title": boardgame.item.title,
+                    "progress_display": progress_display,
+                    "date_range_display": date_range_display,
+                    "episode_label": None,
+                    "episode_code": None,
+                    "played_at_local": played_at_local,
+                    "runtime_minutes": 0,
+                    "runtime_display": progress_display,
+                },
+            )
     else:
         # repeats style: spread playtime evenly across date range
         for game in games:
@@ -345,6 +393,56 @@ def build_history_days(user):
                         "played_at_local": day_dt,
                         "runtime_minutes": minutes_for_day,
                         "runtime_display": helpers.minutes_to_hhmm(minutes_for_day) if minutes_for_day else None,
+                    },
+                )
+        for boardgame in boardgames:
+            if not (boardgame.start_date or boardgame.end_date):
+                continue
+
+            total_plays = boardgame.progress or 0
+            if total_plays <= 0:
+                continue
+
+            start_dt = boardgame.start_date or boardgame.end_date or boardgame.created_at
+            end_dt = boardgame.end_date or boardgame.start_date or boardgame.created_at
+            if not start_dt or not end_dt:
+                continue
+
+            start_local = _localize_datetime(start_dt).date()
+            end_local = _localize_datetime(end_dt).date()
+            if start_local > end_local:
+                start_local, end_local = end_local, start_local
+
+            day_count = (end_local - start_local).days + 1
+            if day_count <= 0:
+                day_count = 1
+
+            base = total_plays // day_count
+            remainder = total_plays % day_count
+            date_range_display = f"{formats.date_format(start_local, 'M j')} - {formats.date_format(end_local, 'M j')}"
+            total_progress_display = _format_boardgame_plays(total_plays)
+
+            for offset in range(day_count):
+                day = start_local + timedelta(days=offset)
+                plays_for_day = base + (1 if offset < remainder else 0)
+                day_dt = timezone.make_aware(
+                    datetime.combine(day, datetime.min.time()),
+                    timezone.get_current_timezone(),
+                )
+                entries.append(
+                    {
+                        "media_type": MediaTypes.BOARDGAME.value,
+                        "item": boardgame.item,
+                        "poster": boardgame.item.image or settings.IMG_NONE,
+                        "title": boardgame.item.title,
+                        "display_title": boardgame.item.title,
+                        "progress_display": total_progress_display,
+                        "date_range_display": date_range_display,
+                        "episode_label": None,
+                        "episode_code": None,
+                        "played_at_local": day_dt,
+                        "runtime_minutes": 0,
+                        "runtime_display": _format_boardgame_plays(plays_for_day) if plays_for_day else None,
                     },
                 )
 
