@@ -32,7 +32,7 @@ This document explains how media types are defined and wired through the app so 
 
 ## Statistics
 - Data assembly in `src/app/statistics.py`: iterates `user.get_active_media_types`; if `season_enabled` is false, seasons are removed from counts. TV/Season queries prefetch episodes; others filter by date window.
-- Charts: media type distribution, score/status distribution, timeline, activity heatmap, hours/plays per media type. Colors from `media_type_config.stats_color`.
+- Charts: media type distribution, score/status distribution, activity heatmap, hours/plays per media type. Colors from `media_type_config.stats_color`.
 - Spotlight sections are hard-coded for Movies, TV, Games, Anime (top played cards); new types won’t appear there without template edits.
 - Runtime/units: Minutes per media type rely on `Item.runtime_minutes` or provider runtime; fallback 60 minutes for unknown types; movies use cached runtime; TV/anime use episode runtimes; games use progress minutes.
 

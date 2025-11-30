@@ -1074,7 +1074,6 @@ def statistics(request):
     status_pie_chart_data = stats.get_status_pie_chart_data(
         status_distribution,
     )
-    timeline = stats.get_timeline(user_media)
     top_played = stats.get_top_played_media(user_media, start_date, end_date)
     
     # Calculate hours and detailed consumption summaries
@@ -1126,7 +1125,6 @@ def statistics(request):
         "top_played": top_played,
         "status_distribution": status_distribution,
         "status_pie_chart_data": status_pie_chart_data,
-        "timeline": timeline,
         "hours_per_media_type": hours_per_media_type,
         "tv_consumption": tv_consumption,
         "movie_consumption": movie_consumption,
