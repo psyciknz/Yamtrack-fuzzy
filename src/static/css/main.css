@@ -2986,6 +2986,9 @@
   .media-status-chip[data-mobile-hide-on-mobile="true"] {
     display: none !important;
   }
+  [data-mobile-hide-on-mobile="true"] {
+    display: none !important;
+  }
   .media-grid .p-3 {
     padding: calc(var(--spacing) * 2);
   }
