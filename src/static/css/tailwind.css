@@ -1491,6 +1491,9 @@
   .pt-8 {
     padding-top: calc(var(--spacing) * 8);
   }
+  .pr-0 {
+    padding-right: calc(var(--spacing) * 0);
+  }
   .pr-2 {
     padding-right: calc(var(--spacing) * 2);
   }
@@ -2703,6 +2706,11 @@
       align-items: center;
     }
   }
+  .md\:gap-2 {
+    @media (width >= 48rem) {
+      gap: calc(var(--spacing) * 2);
+    }
+  }
   .md\:gap-10 {
     @media (width >= 48rem) {
       gap: calc(var(--spacing) * 10);
@@ -2736,6 +2744,11 @@
   .md\:px-0 {
     @media (width >= 48rem) {
       padding-inline: calc(var(--spacing) * 0);
+    }
+  }
+  .md\:pr-4 {
+    @media (width >= 48rem) {
+      padding-right: calc(var(--spacing) * 4);
     }
   }
   .md\:text-start {
@@ -2974,7 +2987,7 @@
   }
   .filter-toolbar {
     width: 100%;
-    display: grid;
+    display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
     column-gap: calc(var(--spacing) * 2);
     row-gap: calc(var(--spacing) * 2);
@@ -3000,6 +3013,17 @@
   }
   .filter-toolbar .layout-toggle {
     justify-self: end;
+  }
+  .lists-filter-toolbar {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: calc(var(--spacing) * 4);
+  }
+  .lists-filter-toolbar .filter-control>button {
+    box-sizing: border-box;
+  }
+  .lists-filter-toolbar .filter-control:last-child>button {
+    padding-right: 0 !important;
   }
   .mobile-tight-section {
     padding: 0 !important;

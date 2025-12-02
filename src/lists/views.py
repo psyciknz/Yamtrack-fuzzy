@@ -3,7 +3,7 @@ import logging
 from django.apps import apps
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
@@ -25,6 +25,11 @@ def lists(request):
     search_query = request.GET.get("q", "")
     page = request.GET.get("page", 1)
     sort_by = request.user.update_preference("lists_sort", request.GET.get("sort"))
+    enabled_media_types = request.user.get_enabled_media_types()
+    selected_media_type = request.GET.get("media_type", "all")
+
+    if selected_media_type != "all" and selected_media_type not in enabled_media_types:
+        selected_media_type = "all"
 
     custom_lists = CustomList.objects.get_user_lists(request.user)
 
@@ -32,6 +37,16 @@ def lists(request):
         custom_lists = custom_lists.filter(
             Q(name__icontains=search_query) | Q(description__icontains=search_query),
         )
+
+    if selected_media_type != "all":
+        custom_lists = custom_lists.annotate(
+            has_media_type=Exists(
+                CustomListItem.objects.filter(
+                    custom_list_id=OuterRef("pk"),
+                    item__media_type=selected_media_type,
+                ),
+            ),
+        ).filter(has_media_type=True)
 
     if sort_by == "name":
         custom_lists = custom_lists.order_by("name")
@@ -84,6 +99,8 @@ def lists(request):
             "form": create_list_form,
             "current_sort": sort_by,
             "sort_choices": ListSortChoices.choices,
+            "media_types": enabled_media_types,
+            "current_media_type": selected_media_type,
         },
     )
 
