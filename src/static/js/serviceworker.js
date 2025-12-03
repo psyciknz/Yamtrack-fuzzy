@@ -1,6 +1,5 @@
-const CACHE_NAME = "yamtrack-v1";
+const CACHE_NAME = "yamtrack-v2";
 const urlsToCache = [
-  "/",
   "/static/css/main.css",
   "/static/favicon/android-chrome-192x192.png",
   "/static/favicon/android-chrome-512x512.png",
@@ -14,13 +13,40 @@ self.addEventListener("install", (event) => {
       return cache.addAll(urlsToCache);
     }),
   );
+  // Activate this worker immediately; don't wait for old one to finish
+  self.skipWaiting();
 });
 
 // Fetch event
 self.addEventListener("fetch", (event) => {
+  const request = event.request;
+
+  // Never serve HTML from cache; always go to network first so pages stay fresh
+  const isNavigationRequest =
+    request.mode === "navigate" ||
+    (request.headers.get("accept") || "").includes("text/html");
+
+  if (isNavigationRequest) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  // Only cache GET requests for static assets
+  if (request.method !== "GET") {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(request).then((response) => {
+      if (response) {
+        return response;
+      }
+
+      return fetch(request).then((networkResponse) => {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+        return networkResponse;
+      });
     }),
   );
 });
@@ -28,16 +54,19 @@ self.addEventListener("fetch", (event) => {
 // Activate event
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
-      Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
+    caches
+      .keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
 
-          return undefined;
-        }),
-      ),
-    ),
+            return undefined;
+          }),
+        ),
+      )
+      .then(() => self.clients.claim()),
   );
 });

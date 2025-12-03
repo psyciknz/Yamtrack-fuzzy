@@ -1499,6 +1499,9 @@ class Season(Media):
                     fields=["status"],
                 )
 
+            # Ensure local data keeps statuses aligned (no provider calls)
+            self._sync_status_after_episode_change()
+
             self.item.fetch_releases(delay=True)
 
     @property
@@ -1636,7 +1639,76 @@ class Season(Media):
             episode_number,
             remaining_count,
         )
+
+        # Re-evaluate season/TV status after deletion so completed shows don't stay "In progress"
+        self._sync_status_after_episode_change()
         cache_utils.clear_time_left_cache_for_user(self.user_id)
+
+    def _sync_status_after_episode_change(self):
+        """Recalculate season (and TV) status using local data (no provider calls)."""
+        if self.status == Status.DROPPED.value:
+            return
+
+        # What episodes do we have logged?
+        episode_numbers = set(
+            self.episodes.values_list("item__episode_number", flat=True),
+        )
+        episode_numbers.discard(None)
+        max_watched = max(episode_numbers) if episode_numbers else 0
+
+        # Best local hint for total episodes: release events in the DB
+        total_eps = (
+            events.models.Event.objects.filter(
+                item=self.item,
+                content_number__isnull=False,
+                datetime__lte=timezone.now(),
+            ).aggregate(max_ep=Max("content_number"))["max_ep"]
+            or 0
+        )
+
+        desired_status = None
+
+        if total_eps > 0 and max_watched >= total_eps:
+            # We know how many have released and we've logged them all
+            desired_status = Status.COMPLETED.value
+        elif max_watched > 0 and total_eps == 0:
+            # No release data, but we have watches — stay in progress
+            desired_status = Status.IN_PROGRESS.value
+        elif max_watched > 0:
+            desired_status = Status.IN_PROGRESS.value
+        else:
+            desired_status = Status.PLANNING.value
+
+        season_updates = []
+        if desired_status and self.status != desired_status:
+            self.status = desired_status
+            season_updates.append(self)
+
+        # Align the parent TV unless it was dropped explicitly
+        tv_updates = []
+        tv = getattr(self, "related_tv", None)
+        if tv and tv.status != Status.DROPPED.value and desired_status:
+            if desired_status == Status.COMPLETED.value:
+                # Only mark TV complete if all real seasons are complete
+                has_incomplete = tv.seasons.filter(
+                    item__season_number__gt=0,
+                ).exclude(status=Status.COMPLETED.value).exists()
+                tv_target = (
+                    Status.COMPLETED.value
+                    if not has_incomplete
+                    else Status.IN_PROGRESS.value
+                )
+            else:
+                tv_target = Status.IN_PROGRESS.value
+
+            if tv.status != tv_target:
+                tv.status = tv_target
+                tv_updates.append(tv)
+
+        if season_updates:
+            bulk_update_with_history(season_updates, Season, fields=["status"])
+        if tv_updates:
+            bulk_update_with_history(tv_updates, TV, fields=["status"])
 
     def get_tv(self):
         """Get related TV instance for a season and create it if it doesn't exist."""
