@@ -80,7 +80,7 @@
         {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
           <div class="space-y-1 text-xs text-gray-400">
             {% if media.aggregated_progress and media.item.media_type != MediaTypes.MOVIE.value %}
-              <div class="text-center {% if media.item.media_type == MediaTypes.GAME.value %}media-status-chip hidden sm:block{% endif %}"
+              <div class="text-center media-status-chip"
                    data-mobile-hide-on-mobile="true">
                 <span class="text-indigo-400 font-medium">Total Progress:</span>
                 {{ media.formatted_aggregated_progress }}
@@ -91,14 +91,14 @@
             {# Removed date range display to reduce clutter #}
             
             {% if media.aggregated_score %}
-              <div class="text-center {% if media.item.media_type == MediaTypes.GAME.value %}media-status-chip hidden sm:block{% endif %}"
+              <div class="text-center media-status-chip"
                    data-mobile-hide-on-mobile="true">
                 <span class="text-indigo-400 font-medium">Rating:</span>
                 <span class="text-yellow-400">{{ media.aggregated_score }}</span>
               </div>
             {% endif %}
             
-            <div class="text-center text-slate-400 {% if media.item.media_type == MediaTypes.GAME.value %}media-status-chip hidden sm:block{% endif %}"
+            <div class="text-center text-slate-400 media-status-chip"
                  data-mobile-hide-on-mobile="true">
               <svg xmlns="http://www.w3.org/2000/svg"
                    width="16"
