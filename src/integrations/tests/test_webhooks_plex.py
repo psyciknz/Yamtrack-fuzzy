@@ -178,6 +178,61 @@ class PlexWebhookTests(TestCase):
         )
         self.assertIsNotNone(episode.end_date)
 
+    def test_tv_episode_mark_played_missing_tmdb(self):
+        """Test webhook handles TV episode mark played event."""
+        payload = {
+            "event": "media.scrobble",
+            "Account": {
+                "title": "testuser",
+            },
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Summer House",
+                "index": 5,
+                "parentIndex": 9,
+                "Guid": [
+                    {
+                        "id": "imdb://tt35061530",
+                    },
+                    {
+                        "id": "tvdb://10960105",
+                    },
+                ],
+            },
+        }
+
+        data = {
+            "payload": json.dumps(payload),
+        }
+
+        response = self.client.post(
+            self.url,
+            data=data,
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify objects were created
+        tv_item = Item.objects.get(media_type=MediaTypes.TV.value, media_id="1668")
+        self.assertEqual(tv_item.title, "Friends")
+
+        tv = TV.objects.get(item=tv_item, user=self.user)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+        season = Season.objects.get(
+            item__media_id="1668",
+            item__season_number=1,
+        )
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
+        episode = Episode.objects.get(
+            item__media_id="1668",
+            item__season_number=1,
+            item__episode_number=1,
+        )
+        self.assertIsNotNone(episode.end_date)
+
     def test_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
