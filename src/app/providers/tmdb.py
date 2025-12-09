@@ -141,9 +141,27 @@ def movie(media_id):
                 url,
                 params=params,
             )
+            if response.get("belongs_to_collection", {}) is not None and (
+                collection_id := response.get("belongs_to_collection", {}).get("id")
+            ):
+                collection_response = services.api_request(
+                    Sources.TMDB.value,
+                    "GET",
+                    f"{base_url}/collection/{collection_id}",
+                    params={**base_params},
+                )
+            else:
+                collection_response = {}
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
+        # Filter out collection items from recommendations, to avoid duplicates
+        collection_items = get_collection(collection_response)
+        collection_ids = [item["media_id"] for item in collection_items]
+        recommended_items = response.get("recommendations", {}).get("results", [])
+        filtered_recommendations = [
+            item for item in recommended_items if item["id"] not in collection_ids
+        ]
         data = {
             "media_id": media_id,
             "source": Sources.TMDB.value,
@@ -166,8 +184,9 @@ def movie(media_id):
                 "languages": get_languages(response["spoken_languages"]),
             },
             "related": {
+                collection_response.get("name", "collection"): collection_items,
                 "recommendations": get_related(
-                    response.get("recommendations", {}).get("results", [])[:15],
+                    filtered_recommendations[:15],
                     MediaTypes.MOVIE.value,
                 ),
             },
@@ -257,13 +276,13 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
                 raise services.ProviderAPIError(msg, error=not_found_error, details=msg)
 
             season_data = process_season(response[season_key])
+
             season_data = enrich_season_with_tv_data(
                 season_data,
                 fetched_tv_data,
                 media_id,
                 season_number,
             )
-
             cache.set(
                 f"{Sources.TMDB.value}_{MediaTypes.SEASON.value}_{media_id}_{season_number}",
                 season_data,
@@ -349,7 +368,7 @@ def process_tv(response):
         "details": {
             "format": "TV",
             "first_air_date": get_start_date(response["first_air_date"]),
-            "last_air_date": response["last_air_date"],
+            "last_air_date": get_start_date(response["last_air_date"]),
             "status": response["status"],
             "seasons": response["number_of_seasons"],
             "episodes": num_episodes,
@@ -445,15 +464,42 @@ def get_start_date(date):
     """Return the start date for the media."""
     # when unknown date, value from response is empty string
     # e.g movie: 445290
-    if date == "":
+    if date == "" or not date:
         return None
-    return date
+    
+    try:
+        from django.utils import timezone
+        from datetime import datetime
+        
+        # TMDB returns dates in YYYY-MM-DD format
+        if isinstance(date, str):
+            # Parse the date string and convert to timezone-aware datetime
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+            return timezone.make_aware(date_obj, timezone.get_current_timezone())
+        
+        return date
+    except (ValueError, TypeError):
+        # If parsing fails, return the original value
+        return date
 
 
 def get_end_date(response):
     """Return the last air date for the season."""
     if response["episodes"]:
-        return response["episodes"][-1]["air_date"]
+        last_episode_date = response["episodes"][-1]["air_date"]
+        if last_episode_date:
+            try:
+                from django.utils import timezone
+                from datetime import datetime
+                
+                # TMDB returns dates in YYYY-MM-DD format
+                date_obj = datetime.strptime(last_episode_date, "%Y-%m-%d")
+                return timezone.make_aware(date_obj, timezone.get_current_timezone())
+            except (ValueError, TypeError):
+                # If parsing fails, return the original value
+                return last_episode_date
+        
+        return last_episode_date
 
     return None
 
@@ -548,13 +594,40 @@ def get_related(related_medias, media_type, parent_response=None):
             data["title"] = parent_response["name"]
             data["season_number"] = media["season_number"]
             data["season_title"] = media["name"]
+            # Use the same date processing logic as process_season for consistency
             data["first_air_date"] = get_start_date(media["air_date"])
+            # For last_air_date, we need to simulate get_end_date logic since we don't have episode data here
+            # This will be updated when the detailed season data is fetched
+            data["last_air_date"] = None
             data["max_progress"] = media["episode_count"]
         else:
             data["media_id"] = media["id"]
             data["title"] = get_title(media)
         related.append(data)
     return related
+
+
+def get_collection(collection_response):
+    """Format media collection list to match related media."""
+    def date_key(media):
+        date = media.get("release_date", "")
+        if date is None or date == "":
+            # If release date is unknown, sort by title after known releases
+            title = get_title(media)
+            date = f"9999-99-99-{title}"
+        return date
+
+    parts = sorted(collection_response.get("parts", []), key=date_key)
+    return [
+        {
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.MOVIE.value,
+            "image": get_image_url(media["poster_path"]),
+            "media_id": media["id"],
+            "title": get_title(media),
+        }
+        for media in parts
+    ]
 
 
 def process_episodes(season_metadata, episodes_in_db):
@@ -571,6 +644,20 @@ def process_episodes(season_metadata, episodes_in_db):
 
     for episode in season_metadata["episodes"]:
         episode_number = episode["episode_number"]
+        
+        # Convert air_date to datetime object if it's a string
+        air_date = episode["air_date"]
+        if air_date and isinstance(air_date, str):
+            try:
+                from django.utils import timezone
+                from datetime import datetime
+                
+                # TMDB returns dates in YYYY-MM-DD format
+                date_obj = datetime.strptime(air_date, "%Y-%m-%d")
+                air_date = timezone.make_aware(date_obj, timezone.get_current_timezone())
+            except (ValueError, TypeError):
+                # If parsing fails, keep the original value
+                pass
 
         episodes_metadata.append(
             {
@@ -579,7 +666,7 @@ def process_episodes(season_metadata, episodes_in_db):
                 "source": Sources.TMDB.value,
                 "season_number": season_metadata["season_number"],
                 "episode_number": episode_number,
-                "air_date": episode["air_date"],  # when unknown, response returns null
+                "air_date": air_date,  # when unknown, response returns null
                 "image": get_image_url(episode["still_path"]),
                 "title": episode["name"],
                 "overview": episode["overview"],

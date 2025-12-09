@@ -11,6 +11,7 @@
 .htmx-indicator {
   display: none;
 }
+
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator {
   display: block;
@@ -27,7 +28,14 @@
 
 
 .media-grid {
-  @apply grid grid-cols-2 xs:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4;
+  @apply grid gap-4;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+@media (min-width: 30rem) {
+  .media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+  }
 }
 
 /* https://tailwindcss.com/docs/upgrade-guide#hover-styles-on-mobile */
@@ -48,6 +56,173 @@
 
 .toast-info {
   @apply bg-indigo-700/95 border-indigo-600;
+}
+
+.stat-scroll-safe {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  .media-card {
+    background-color: transparent !important;
+    box-shadow: none;
+  }
+
+  .media-card-body {
+    padding: 0 !important;
+  }
+
+  .media-card-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: calc(var(--spacing) * 2);
+    font-weight: 400;
+    font-size: var(--text-xs);
+    text-align: center !important;
+  }
+
+  .media-card-body>*+* {
+    margin-top: calc(var(--spacing) * 0.25);
+  }
+
+  .media-card-body.space-y-3> :not([hidden])~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 0.25) !important;
+  }
+
+  .progress-adjust-btn {
+    display: none !important;
+  }
+
+  .media-card-poster {
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-lg);
+  }
+
+  .media-grid {
+    gap: calc(var(--spacing) * 3);
+  }
+
+  .media-card-progress,
+  .media-card-progress .progress-changer,
+  .media-card-progress .progress-changer>div {
+    text-align: center;
+    justify-content: center;
+  }
+
+  .progress-changer {
+    width: 100%;
+  }
+
+  .media-card-progress[data-progress-mode="conditional"] {
+    display: none !important;
+  }
+
+  .media-card-progress[data-progress-mode="conditional"][data-mobile-show="true"] {
+    display: block !important;
+  }
+
+  .media-progress-chip[data-progress-chip-mode="conditional"] {
+    display: none !important;
+  }
+
+  .media-progress-chip[data-progress-chip-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+
+  .media-time-left-chip[data-time-left-mode="conditional"] {
+    display: none !important;
+  }
+
+  .media-time-left-chip[data-time-left-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+
+  .media-score-chip[data-score-chip-mode="conditional"] {
+    display: none !important;
+  }
+
+  .media-score-chip[data-score-chip-mode="conditional"][data-mobile-show="true"] {
+    display: flex !important;
+  }
+
+  .media-status-chip[data-mobile-hide-on-mobile="true"] {
+    display: none !important;
+  }
+
+  .media-grid .p-3 {
+    padding: calc(var(--spacing) * 2);
+  }
+
+  .filter-toolbar {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    column-gap: calc(var(--spacing) * 2);
+    row-gap: calc(var(--spacing) * 2);
+    align-items: stretch;
+  }
+
+  .filter-toolbar .filter-control {
+    width: 100%;
+  }
+
+  .filter-toolbar .filter-control>button {
+    width: 100%;
+    padding-inline: calc(var(--spacing) * 3) !important;
+    padding-block: calc(var(--spacing) * 1.5) !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: calc(var(--spacing) * 0.25);
+  }
+
+  .filter-toolbar .filter-control>button span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .filter-toolbar .layout-toggle {
+    justify-self: end;
+  }
+
+  .lists-filter-toolbar {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: calc(var(--spacing) * 4);
+  }
+
+  .lists-filter-toolbar .filter-control>button {
+    box-sizing: border-box;
+  }
+
+  .lists-filter-toolbar .filter-control:last-child>button {
+    padding-right: 0 !important;
+  }
+
+  .mobile-tight-section {
+    padding: 0 !important;
+    padding-inline: calc(var(--spacing) * 2) !important;
+    background-color: transparent !important;
+    border-radius: 0;
+    overflow-x: hidden;
+  }
+
+  .stat-scroll-safe {
+    max-width: calc(100vw - 2rem);
+    margin-inline: auto;
+    width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+@media (min-width: 769px) {
+  .stat-scroll-safe {
+    max-width: none;
+  }
 }
 
 .select2-container--tailwindcss-4 {
@@ -74,30 +249,22 @@
 }
 
 /* Multiple selection list */
-.select2-container--tailwindcss-4
-  .select2-selection--multiple
-  .select2-selection__rendered {
+.select2-container--tailwindcss-4 .select2-selection--multiple .select2-selection__rendered {
   @apply flex flex-row flex-wrap gap-1.5 m-0 p-0 list-none;
 }
 
 /* Multiple selection choices */
-.select2-container--tailwindcss-4
-  .select2-selection--multiple
-  .select2-selection__choice {
+.select2-container--tailwindcss-4 .select2-selection--multiple .select2-selection__choice {
   @apply flex flex-row-reverse items-center gap-1 bg-[#454d5a] text-gray-200 pl-2 pr-1 py-1 rounded-md text-sm border border-indigo-500/20;
 }
 
 /* Remove button */
-.select2-container--tailwindcss-4
-  .select2-selection--multiple
-  .select2-selection__choice__remove {
+.select2-container--tailwindcss-4 .select2-selection--multiple .select2-selection__choice__remove {
   @apply mr-1 h-4 w-4 pb-[0.10rem] items-center flex justify-center rounded-full hover:bg-red-400/10 hover:text-red-400 cursor-pointer;
 }
 
 /* Search field in multiple selection */
-.select2-container--tailwindcss-4
-  .select2-selection--multiple
-  .select2-search--inline {
+.select2-container--tailwindcss-4 .select2-selection--multiple .select2-search--inline {
   @apply block my-0.5;
 }
 
@@ -109,8 +276,7 @@
 }
 
 /* Focus styles for keyboard navigation */
-.select2-container--tailwindcss-4.select2-container--focus
-  .select2-selection--multiple {
+.select2-container--tailwindcss-4.select2-container--focus .select2-selection--multiple {
   @apply outline-none ring-2 ring-[#4a9eff] appearance-none;
 }
 

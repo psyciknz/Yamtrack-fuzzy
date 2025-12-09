@@ -6,7 +6,66 @@
 ![Codecov](https://codecov.io/github/FuzzyGrim/Yamtrack/branch/dev/graph/badge.svg?token=PWUG660120)
 ![GitHub](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
-Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, video games and books.
+Yamtrack is a self hosted media tracker for movies, tv shows, anime, manga, video games, books, comics, and board games.
+
+## 📱 Repo Specific Features
+
+| Sort Lists by Ratings                                                                                       | Preferences Tab for Optional Features                                                                                    |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 45 17 PM" src="https://github.com/user-attachments/assets/77eb1685-d709-485f-a79b-2b4de2698009" /> | <img width="1176" height="583" alt="Screenshot 2025-11-13 at 8 46 54 PM" src="https://github.com/user-attachments/assets/0368c01b-a10c-44a9-9ed1-aa150b78f3aa" /> |
+
+
+| Top 10 Statistics                                                                                    | Activity Overview Statistics                                                                                     |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 48 32 PM" src="https://github.com/user-attachments/assets/9150add3-c7dd-4a18-a422-fcc67c30bb37" /> | <img alt="Screenshot 2025-11-13 at 8 49 48 PM" src="https://github.com/user-attachments/assets/91d85919-30c9-4a9d-b65b-92c4e78f8c5c" /> |
+
+| Combined Duplicates                                                                                         | Sort by Time Left                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/4d3c2796-90c7-47fe-b23e-c8104fff92cf" /> | <img alt="Screenshot 2025-11-13 at 8 52 39 PM" src="https://github.com/user-attachments/assets/3966fe33-9f9d-4d4d-bf35-1cbf61ac2e90" /> |
+
+| Refined Mobile Layout Changes                                                                                         | Optionally Convert In Progress to Paused after Delay                                                                                    |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| <img alt="Screenshot 2025-11-13 at 8 51 18 PM" src="https://github.com/user-attachments/assets/3f0ad1dd-8121-4d31-8641-a6e60fc9d4c4" /> | <img alt="Screenshot 2025-11-15 at 8 17 50 PM" src="https://github.com/user-attachments/assets/8222884e-ac1e-417e-be14-fa744918755a" /> |
+| Added History Page                                                                                         | Placeholder for Second Screenshot                                                                                    |
+| <img  alt="Screenshot 2025-11-26 at 6 12 33 PM" src="https://github.com/user-attachments/assets/65ae9a2c-ad33-4129-85e4-4653ef48658a" />
+ | <img/> |
+
+
+## 📱 Repo Specific Installation
+Docker image is now available: ```docker pull ghcr.io/dannyvfilms/yamtrack:release```
+
+I haven't figured out the workflow to publish Docker containers yet. Until then, use the following commands to build locally:
+
+```bash
+cd /mnt/users/appdata
+git clone https://github.com/dannyvfilms/Yamtrack.git
+cd Yamtrack
+
+cat > .env <<EOF
+TMDB_API=CHANGE_ME
+IGDB_ID=CHANGE_ME
+IGDB_SECRET=CHANGE_ME
+BGG_API_TOKEN=CHANGE_ME
+SECRET=$(openssl rand -hex 32)
+DEBUG=FALSE
+REDIS_URL=CHANGE_ME
+ALLOWED_HOSTS=CHANGE_ME
+EOF
+
+git checkout release
+git pull origin release
+docker compose build --no-cache
+docker compose up -d
+```
+
+To update your container:
+```
+cd /mnt/users/appdata/Yamtrack
+git checkout release
+git pull origin release
+docker compose build --no-cache
+```
+Then recreate your container with the new image (e.g. "Recreate" in Portainer).
 
 ## 🚀 Demo
 
@@ -14,7 +73,7 @@ You can try the app at [yamtrack.fuzzygrim.com](https://yamtrack.fuzzygrim.com) 
 
 ## ✨ Features
 
-- 🎬 Track movies, tv shows, anime, manga, games, books and comics.
+- 🎬 Track movies, tv shows, anime, manga, games, books, comics, and board games.
 - 📺 Track each season of a tv show individually and episodes watched.
 - ⭐ Save score, status, progress, repeats (rewatches, rereads...), start and end dates, or write a note.
 - 📈 Keep a tracking history with each action with a media, such as when you added it, when you started it, when you started watching it again, etc.
@@ -98,7 +157,7 @@ cd Yamtrack
 Install Redis or spin up a bare redis container:
 
 ```bash
-docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine
+docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:8-alpine
 ```
 
 Create a `.env` file in the root directory and add the following variables.

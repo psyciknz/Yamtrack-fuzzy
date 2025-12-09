@@ -7,7 +7,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_datetime
 
 import app
-from app import media_type_config
+from app import config
 from app.models import MediaTypes, Sources
 from app.providers import services
 from app.templatetags import app_tags
@@ -128,16 +128,18 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        item, _ = app.models.Item.objects.update_or_create(
-            media_id=row["media_id"],
-            source=row["source"],
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-            defaults={
-                "title": row["title"],
-                "image": row["image"],
-            },
+        item, _ = helpers.retry_on_lock(
+            lambda: app.models.Item.objects.update_or_create(
+                media_id=row["media_id"],
+                source=row["source"],
+                media_type=media_type,
+                season_number=season_number,
+                episode_number=episode_number,
+                defaults={
+                    "title": row["title"],
+                    "image": row["image"],
+                },
+            )
         )
 
         model = apps.get_model(app_label="app", model_name=media_type)
@@ -182,7 +184,7 @@ class YamtrackImporter:
         if row.get("title", "") != "":
             source = row.get("source", "")
             if source == "":
-                source = media_type_config.get_default_source_name(media_type)
+                source = config.get_default_source_name(media_type).value
 
             metadata = services.search(
                 media_type,
@@ -204,4 +206,3 @@ class YamtrackImporter:
 
         msg = f"Missing metadata for: {row}"
         raise MediaImportError(msg)
-

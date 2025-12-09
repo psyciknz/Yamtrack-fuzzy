@@ -1,10 +1,11 @@
 from django import forms
 from django.conf import settings
 
-from app import media_type_config
+from app import config
 from app.models import (
     TV,
     Anime,
+    BoardGame,
     Book,
     Comic,
     Episode,
@@ -225,6 +226,19 @@ class MediaForm(forms.ModelForm):
             ),
         }
 
+    def __init__(self, *args, **kwargs):
+        """Initialize the form."""
+        super().__init__(*args, **kwargs)
+        # Make date fields optional to allow submission without dates
+        if "start_date" in self.fields:
+            self.fields["start_date"].required = False
+            # Explicitly remove required attribute from widget to prevent HTML5 validation
+            self.fields["start_date"].widget.attrs.pop("required", None)
+        if "end_date" in self.fields:
+            self.fields["end_date"].required = False
+            # Explicitly remove required attribute from widget to prevent HTML5 validation
+            self.fields["end_date"].widget.attrs.pop("required", None)
+
 
 class MangaForm(MediaForm):
     """Form for manga."""
@@ -236,7 +250,7 @@ class MangaForm(MediaForm):
         labels = {
             "progress": (
                 f"Progress "
-                f"({media_type_config.get_unit(MediaTypes.MANGA.value, short=False)}s)"
+                f"({config.get_unit(MediaTypes.MANGA.value, short=False)}s)"
             ),
         }
 
@@ -281,6 +295,21 @@ class GameForm(MediaForm):
         model = Game
 
 
+class BoardgameForm(MediaForm):
+    """Form for board games."""
+
+    class Meta(MediaForm.Meta):
+        """Bind form to model."""
+
+        model = BoardGame
+        labels = {
+            "progress": (
+                f"Progress "
+                f"({config.get_unit(MediaTypes.BOARDGAME.value, short=False)}s)"
+            ),
+        }
+
+
 class BookForm(MediaForm):
     """Form for books."""
 
@@ -291,7 +320,7 @@ class BookForm(MediaForm):
         labels = {
             "progress": (
                 f"Progress "
-                f"({media_type_config.get_unit(MediaTypes.BOOK.value, short=False)}s)"
+                f"({config.get_unit(MediaTypes.BOOK.value, short=False)}s)"
             ),
         }
 
@@ -306,7 +335,7 @@ class ComicForm(MediaForm):
         labels = {
             "progress": (
                 f"Progress "
-                f"({media_type_config.get_unit(MediaTypes.COMIC.value, short=False)}s)"
+                f"({config.get_unit(MediaTypes.COMIC.value, short=False)}s)"
             ),
         }
 

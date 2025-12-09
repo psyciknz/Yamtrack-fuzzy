@@ -1,3 +1,4 @@
+import json
 import logging
 
 import apprise
@@ -13,9 +14,77 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from django_celery_beat.models import PeriodicTask
 
 from app.models import Item, MediaTypes
+from app.templatetags import app_tags
 from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
+from users.models import (
+    ActivityHistoryViewChoices,
+    DateFormatChoices,
+    GameLoggingStyleChoices,
+    TimeFormatChoices,
+)
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_AUTO_PAUSE_WEEKS = 16
+AUTO_PAUSE_MEDIA_TYPES = [
+    MediaTypes.GAME.value,
+    MediaTypes.BOARDGAME.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.SEASON.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+]
+
+
+def _normalize_auto_pause_rules(raw_rules: str, allowed_libraries: list[str]) -> list[dict]:
+    """Validate and normalize submitted auto-pause rules."""
+    try:
+        parsed_rules = json.loads(raw_rules or "[]")
+    except (TypeError, ValueError):
+        parsed_rules = []
+
+    if not isinstance(parsed_rules, list):
+        return []
+
+    normalized_rules: list[dict] = []
+    allowed_set = set(allowed_libraries)
+    allowed_set.add("all")
+
+    for entry in parsed_rules:
+        if not isinstance(entry, dict):
+            continue
+
+        library = entry.get("library")
+        if library not in allowed_set:
+            continue
+
+        weeks = entry.get("weeks", DEFAULT_AUTO_PAUSE_WEEKS)
+        try:
+            weeks_val = int(weeks)
+        except (TypeError, ValueError):
+            weeks_val = DEFAULT_AUTO_PAUSE_WEEKS
+
+        weeks_val = max(1, weeks_val)
+
+        normalized_entry = {
+            "library": library,
+            "weeks": weeks_val,
+        }
+
+        existing_index = next(
+            (index for index, rule in enumerate(normalized_rules) if rule["library"] == library),
+            None,
+        )
+
+        if existing_index is not None:
+            normalized_rules[existing_index] = normalized_entry
+        else:
+            normalized_rules.append(normalized_entry)
+
+    return normalized_rules
 
 
 @require_http_methods(["GET", "POST"])
@@ -208,21 +277,25 @@ def test_notification(request):
 
 
 @require_http_methods(["GET", "POST"])
-def sidebar(request):
-    """Render the sidebar settings page."""
+def ui_preferences(request):
+    """Render the UI preferences settings page."""
     media_types = MediaTypes.values
     media_types.remove(MediaTypes.EPISODE.value)
 
     if request.method == "GET":
-        return render(request, "users/sidebar.html", {"media_types": media_types})
+        return render(
+            request,
+            "users/ui_preferences.html",
+            {"media_types": media_types},
+        )
 
     # Prevent demo users from updating preferences
     if request.user.is_demo:
         messages.error(request, "This section is view-only for demo accounts.")
-        return redirect("sidebar")
+        return redirect("ui_preferences")
 
     # Process form submission
-    request.user.hide_from_search = "hide_disabled" in request.POST
+    request.user.clickable_media_cards = "clickable_media_cards" in request.POST
     media_types_checked = request.POST.getlist("media_types_checkboxes")
 
     # Update user preferences for each media type
@@ -237,36 +310,129 @@ def sidebar(request):
     request.user.save()
     messages.success(request, "Settings updated.")
 
-    return redirect("sidebar")
+    return redirect("ui_preferences")
+
+
+@require_http_methods(["GET", "POST"])
+def preferences(request):
+    """Render the preferences settings page."""
+    active_libraries = [
+        library
+        for library in request.user.get_active_media_types()
+        if library in AUTO_PAUSE_MEDIA_TYPES
+    ]
+    library_labels = {"all": "All Libraries"}
+    for library in active_libraries:
+        library_labels[library] = app_tags.media_type_readable_plural(library)
+
+    if request.method == "POST":
+        # Prevent demo users from updating preferences
+        if request.user.is_demo:
+            messages.error(request, "This section is view-only for demo accounts.")
+            return redirect("preferences")
+
+        # Process form submission for user preferences
+        date_format = request.POST.get("date_format")
+        time_format = request.POST.get("time_format")
+        activity_history_view = request.POST.get("activity_history_view")
+        game_logging_style = request.POST.get("game_logging_style")
+
+        fields_to_update = []
+
+        if date_format and date_format in [choice[0] for choice in DateFormatChoices.choices]:
+            if request.user.date_format != date_format:
+                request.user.date_format = date_format
+                fields_to_update.append("date_format")
+
+        if time_format and time_format in [choice[0] for choice in TimeFormatChoices.choices]:
+            if request.user.time_format != time_format:
+                request.user.time_format = time_format
+                fields_to_update.append("time_format")
+
+        if (
+            activity_history_view
+            and activity_history_view in [choice[0] for choice in ActivityHistoryViewChoices.choices]
+        ):
+            if request.user.activity_history_view != activity_history_view:
+                request.user.activity_history_view = activity_history_view
+                fields_to_update.append("activity_history_view")
+
+        if (
+            game_logging_style
+            and game_logging_style in [choice[0] for choice in GameLoggingStyleChoices.choices]
+        ):
+            if request.user.game_logging_style != game_logging_style:
+                request.user.game_logging_style = game_logging_style
+                fields_to_update.append("game_logging_style")
+                from app import history_cache
+
+                history_cache.invalidate_history_cache(request.user.id)
+                history_cache.schedule_history_refresh(request.user.id, game_logging_style, debounce_seconds=0)
+
+        auto_pause_enabled = request.POST.get("auto_pause_enabled") == "1"
+        raw_rules = request.POST.get("auto_pause_rules", "[]")
+        normalized_rules = _normalize_auto_pause_rules(raw_rules, active_libraries)
+
+        if request.user.auto_pause_in_progress_enabled != auto_pause_enabled:
+            request.user.auto_pause_in_progress_enabled = auto_pause_enabled
+            fields_to_update.append("auto_pause_in_progress_enabled")
+
+        if request.user.auto_pause_rules != normalized_rules:
+            request.user.auto_pause_rules = normalized_rules
+            fields_to_update.append("auto_pause_rules")
+
+        if fields_to_update:
+            request.user.save(update_fields=fields_to_update)
+        messages.success(request, "Preferences updated successfully.")
+        return redirect("preferences")
+
+    context = {
+        "active_libraries": active_libraries,
+        "auto_pause_enabled": request.user.auto_pause_in_progress_enabled,
+        "auto_pause_rules_json": json.dumps(request.user.auto_pause_rules or []),
+        "library_labels_json": json.dumps(library_labels),
+    }
+
+    return render(request, "users/preferences.html", context)
 
 
 @require_GET
 def integrations(request):
     """Render the integrations settings page."""
-    return render(request, "users/integrations.html")
+    return render(request, "users/integrations.html", {"user": request.user})
 
 
 @require_GET
 def import_data(request):
     """Render the import data settings page."""
     import_tasks = request.user.get_import_tasks()
-    return render(request, "users/import_data.html", {"import_tasks": import_tasks})
+    return render(request, "users/import_data.html", {"user": request.user, "import_tasks": import_tasks})
 
 
 @require_GET
 def export_data(request):
     """Render the export data settings page."""
-    return render(request, "users/export_data.html")
+    return render(request, "users/export_data.html", {"user": request.user})
+
 
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
     return render(request, "users/advanced.html")
 
+
 @require_GET
 def about(request):
     """Render the about page."""
-    return render(request, "users/about.html", {"version": settings.VERSION})
+    return render(
+        request,
+        "users/about.html",
+        {
+            "user": request.user,
+            "version": settings.VERSION,
+            "commit": settings.COMMIT_SHA_SHORT,
+        },
+    )
 
 
 @require_POST
@@ -319,6 +485,7 @@ def update_plex_usernames(request):
         messages.success(request, "Plex usernames updated successfully")
 
     return redirect("integrations")
+
 
 @require_POST
 def clear_search_cache(request):

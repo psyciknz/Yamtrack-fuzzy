@@ -38,6 +38,7 @@ class MediaSortChoices(models.TextChoices):
     PROGRESS = "progress", "Progress"
     START_DATE = "start_date", "Start Date"
     END_DATE = "end_date", "End Date"
+    TIME_LEFT = "time_left", "Time Left"
 
 
 class MediaStatusChoices(models.TextChoices):
@@ -49,6 +50,13 @@ class MediaStatusChoices(models.TextChoices):
     PLANNING = Status.PLANNING.value, Status.PLANNING.label
     PAUSED = Status.PAUSED.value, Status.PAUSED.label
     DROPPED = Status.DROPPED.value, Status.DROPPED.label
+
+
+class DirectionChoices(models.TextChoices):
+    """Choices for sort direction options."""
+
+    ASC = "asc", "Ascending"
+    DESC = "desc", "Descending"
 
 
 class LayoutChoices(models.TextChoices):
@@ -80,7 +88,44 @@ class ListDetailSortChoices(models.TextChoices):
     DATE_ADDED = "date_added", "Date Added"
     TITLE = "title", "Title"
     MEDIA_TYPE = "media_type", "Media Type"
+    RATING = "rating", "Rating"
 
+
+class DateFormatChoices(models.TextChoices):
+    """Choices for date format preferences."""
+
+    SYSTEM_DEFAULT = "system_default", "System default (locale)"
+    ISO_8601 = "iso_8601", "ISO 8601"
+    MONTH_D_YYYY = "month_d_yyyy", "Month D, YYYY"
+    D_MON_YYYY = "d_mon_yyyy", "D Mon YYYY"
+    M_D_YYYY = "m_d_yyyy", "M/D/YYYY"
+    D_M_YYYY = "d_m_yyyy", "D/M/YYYY"
+    DD_MM_YYYY = "dd_mm_yyyy", "DD.MM.YYYY"
+    YYYY_MM_DD = "yyyy_mm_dd", "YYYY/MM/DD"
+
+
+class TimeFormatChoices(models.TextChoices):
+    """Choices for time format preferences."""
+
+    SYSTEM_DEFAULT = "system_default", "System default (locale)"
+    H_MM_AMPM = "h_mm_ampm", "12-hour (h:mm AM/PM)"
+    HH_MM_AMPM = "hh_mm_ampm", "12-hour, leading zero (hh:mm AM/PM)"
+    HH_MM = "hh_mm", "24-hour (HH:mm)"
+    HH_MM_SS = "hh_mm_ss", "24-hour with seconds (HH:mm:ss)"
+
+
+class ActivityHistoryViewChoices(models.TextChoices):
+    """Choices for which activity history view to show on the statistics page."""
+
+    HEATMAP = "heatmap", "Activity Heatmap"
+    STACKED = "stacked", "Stacked Bar Chart"
+
+
+class GameLoggingStyleChoices(models.TextChoices):
+    """Choices for how game history entries are displayed."""
+
+    SESSIONS = "sessions", "Sessions"
+    REPEATS = "repeats", "Repeats"
 
 class User(AbstractUser):
     """Custom user model."""
@@ -99,11 +144,17 @@ class User(AbstractUser):
         choices=HomeSortChoices.choices,
     )
 
+    # Media type preferences: TV Shows
     tv_enabled = models.BooleanField(default=True)
     tv_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    tv_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     tv_sort = models.CharField(
         max_length=20,
@@ -116,11 +167,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: TV Seasons
     season_enabled = models.BooleanField(default=True)
     season_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    season_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     season_sort = models.CharField(
         max_length=20,
@@ -133,11 +190,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Movies
     movie_enabled = models.BooleanField(default=True)
     movie_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    movie_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     movie_sort = models.CharField(
         max_length=20,
@@ -150,11 +213,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Anime
     anime_enabled = models.BooleanField(default=True)
     anime_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.TABLE,
         choices=LayoutChoices.choices,
+    )
+    anime_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     anime_sort = models.CharField(
         max_length=20,
@@ -167,11 +236,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Manga
     manga_enabled = models.BooleanField(default=True)
     manga_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.TABLE,
         choices=LayoutChoices.choices,
+    )
+    manga_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     manga_sort = models.CharField(
         max_length=20,
@@ -184,11 +259,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Games
     game_enabled = models.BooleanField(default=True)
     game_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    game_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     game_sort = models.CharField(
         max_length=20,
@@ -201,11 +282,40 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Board Games
+    boardgame_enabled = models.BooleanField(default=True)
+    boardgame_layout = models.CharField(
+        max_length=20,
+        default=LayoutChoices.GRID,
+        choices=LayoutChoices.choices,
+    )
+    boardgame_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
+    )
+    boardgame_sort = models.CharField(
+        max_length=20,
+        default=MediaSortChoices.SCORE,
+        choices=MediaSortChoices.choices,
+    )
+    boardgame_status = models.CharField(
+        max_length=20,
+        default=MediaStatusChoices.ALL,
+        choices=MediaStatusChoices.choices,
+    )
+
+    # Media type preferences: Books
     book_enabled = models.BooleanField(default=True)
     book_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    book_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     book_sort = models.CharField(
         max_length=20,
@@ -218,11 +328,17 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
+    # Media type preferences: Comics
     comic_enabled = models.BooleanField(default=True)
     comic_layout = models.CharField(
         max_length=20,
         default=LayoutChoices.GRID,
         choices=LayoutChoices.choices,
+    )
+    comic_direction = models.CharField(
+        max_length=4,
+        default=DirectionChoices.DESC,
+        choices=DirectionChoices.choices,
     )
     comic_sort = models.CharField(
         max_length=20,
@@ -235,58 +351,96 @@ class User(AbstractUser):
         choices=MediaStatusChoices.choices,
     )
 
-    hide_from_search = models.BooleanField(default=True)
+    # UI preferences
+    clickable_media_cards = models.BooleanField(
+        default=False,
+        help_text="Hide hover overlay on touch devices",
+    )
 
+    # Calendar preferences
     calendar_layout = models.CharField(
         max_length=20,
         default=CalendarLayoutChoices.GRID,
         choices=CalendarLayoutChoices.choices,
     )
 
+    # Lists preferences
     lists_sort = models.CharField(
         max_length=20,
         default=ListSortChoices.LAST_ITEM_ADDED,
         choices=ListSortChoices.choices,
     )
-
     list_detail_sort = models.CharField(
         max_length=20,
         default=ListDetailSortChoices.DATE_ADDED,
         choices=ListDetailSortChoices.choices,
     )
 
+    # Notification settings
     notification_urls = models.TextField(
         blank=True,
         help_text="Apprise URLs for notifications",
     )
-
     notification_excluded_items = models.ManyToManyField(
         Item,
         related_name="excluded_by_users",
         blank=True,
         help_text="Items excluded from notifications",
     )
-
     release_notifications_enabled = models.BooleanField(
         default=True,
         help_text="Receive notifications for recently released media",
     )
-
     daily_digest_enabled = models.BooleanField(
         default=True,
         help_text="Receive a daily digest of upcoming releases",
     )
 
+    # Integration settings
     token = models.CharField(
         max_length=32,
         unique=True,
         default=generate_token,
         help_text="Token for external integrations",
     )
-
     plex_usernames = models.TextField(
         blank=True,
         help_text="Comma-separated list of Plex usernames for webhook matching",
+    )
+
+    date_format = models.CharField(
+        max_length=20,
+        default=DateFormatChoices.SYSTEM_DEFAULT,
+        choices=DateFormatChoices.choices,
+    )
+
+    time_format = models.CharField(
+        max_length=20,
+        default=TimeFormatChoices.SYSTEM_DEFAULT,
+        choices=TimeFormatChoices.choices,
+    )
+
+    game_logging_style = models.CharField(
+        max_length=20,
+        default=GameLoggingStyleChoices.REPEATS,
+        choices=GameLoggingStyleChoices.choices,
+        help_text="How game entries are displayed on the History page",
+    )
+
+    activity_history_view = models.CharField(
+        max_length=20,
+        default=ActivityHistoryViewChoices.HEATMAP,
+        choices=ActivityHistoryViewChoices.choices,
+        help_text="Which activity history visualization to show on the Statistics page",
+    )
+    auto_pause_in_progress_enabled = models.BooleanField(
+        default=False,
+        help_text="Automatically pause stale in-progress items",
+    )
+    auto_pause_rules = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Auto-pause rules with per-library week thresholds",
     )
 
     class Meta:
@@ -335,28 +489,76 @@ class User(AbstractUser):
                 condition=models.Q(tv_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="tv_direction_valid",
+                condition=models.Q(tv_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="season_sort_valid",
                 condition=models.Q(season_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="season_direction_valid",
+                condition=models.Q(season_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="movie_sort_valid",
                 condition=models.Q(movie_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="movie_direction_valid",
+                condition=models.Q(movie_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="anime_sort_valid",
                 condition=models.Q(anime_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="anime_direction_valid",
+                condition=models.Q(anime_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="manga_sort_valid",
                 condition=models.Q(manga_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="manga_direction_valid",
+                condition=models.Q(manga_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
                 name="game_sort_valid",
                 condition=models.Q(game_sort__in=MediaSortChoices.values),
             ),
             models.CheckConstraint(
+                name="game_direction_valid",
+                condition=models.Q(game_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_layout_valid",
+                condition=models.Q(boardgame_layout__in=LayoutChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_sort_valid",
+                condition=models.Q(boardgame_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_direction_valid",
+                condition=models.Q(boardgame_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="boardgame_status_valid",
+                condition=models.Q(boardgame_status__in=MediaStatusChoices.values),
+            ),
+            models.CheckConstraint(
                 name="book_sort_valid",
                 condition=models.Q(book_sort__in=MediaSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="book_direction_valid",
+                condition=models.Q(book_direction__in=DirectionChoices.values),
+            ),
+            models.CheckConstraint(
+                name="comic_direction_valid",
+                condition=models.Q(comic_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
                 name="calendar_layout_valid",
@@ -365,6 +567,10 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="lists_sort_valid",
                 condition=models.Q(lists_sort__in=ListSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="activity_history_view_valid",
+                condition=models.Q(activity_history_view__in=ActivityHistoryViewChoices.values),
             ),
             models.CheckConstraint(
                 name="list_detail_sort_valid",
@@ -465,6 +671,25 @@ class User(AbstractUser):
             enabled_types.insert(0, MediaTypes.SEASON.value)
 
         return enabled_types
+
+    def get_auto_pause_rule(self, media_type: str):
+        """Return the most specific auto-pause rule for a media type."""
+        if not self.auto_pause_in_progress_enabled:
+            return None
+
+        if not self.auto_pause_rules:
+            return None
+
+        # Exact match overrides "all"
+        for rule in self.auto_pause_rules:
+            if rule.get("library") == media_type:
+                return rule
+
+        for rule in self.auto_pause_rules:
+            if rule.get("library") == "all":
+                return rule
+
+        return None
 
     def get_import_tasks(self):
         """Return import tasks history and schedules for the user."""

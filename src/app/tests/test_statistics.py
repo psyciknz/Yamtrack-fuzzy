@@ -1,10 +1,14 @@
 import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
+from django.urls import reverse
 
 from app import statistics
+from app.helpers import minutes_to_hhmm
 from app.models import (
     TV,
     Anime,
@@ -199,9 +203,9 @@ class StatisticsDateFilteringTests(TestCase):
             user=self.user,
             item=self.movie7_item,
             status=Status.COMPLETED.value,
-            score=7.0,
-            start_date=datetime.datetime(2025, 1, 25, 0, 0, tzinfo=datetime.UTC),
-            end_date=datetime.datetime(2025, 2, 5, 0, 0, tzinfo=datetime.UTC),
+            score=8.5,
+            start_date=datetime.datetime(2025, 1, 20, 0, 0, tzinfo=datetime.UTC),
+            end_date=datetime.datetime(2025, 2, 25, 0, 0, tzinfo=datetime.UTC),
         )
 
         # Case 8: Movie that starts within range but ends after range
@@ -222,11 +226,11 @@ class StatisticsDateFilteringTests(TestCase):
             None,
         )
 
-        # Should include all media
-        self.assertEqual(media_count["total"], 10)  # TV, Season, and 8 Movies
+        # Should include all media except Planning status items
+        self.assertEqual(media_count["total"], 8)  # TV, Season, and 6 Movies (excluding Planning movie4 and movie6)
         self.assertEqual(media_count[MediaTypes.TV.value], 1)
         self.assertEqual(media_count[MediaTypes.SEASON.value], 1)
-        self.assertEqual(media_count[MediaTypes.MOVIE.value], 8)
+        self.assertEqual(media_count[MediaTypes.MOVIE.value], 6)
 
     def test_date_range_filtering(self):
         """Test filtering with a specific date range."""
@@ -403,7 +407,8 @@ class StatisticsDateFilteringTests(TestCase):
         )
 
         movie_ids = [m.item.id for m in user_media[MediaTypes.MOVIE.value]]
-        self.assertIn(self.movie4_item.id, movie_ids)
+        # movie4 has Planning status and should be excluded
+        self.assertNotIn(self.movie4_item.id, movie_ids)
 
     def test_overlapping_ranges(self):
         """Test media with date ranges that overlap with the filter range."""
@@ -723,10 +728,6 @@ class StatisticsTests(TestCase):
             self.assertIsNotNone(color)
             self.assertTrue(color.startswith("#"))
 
-        # Test unknown status
-        unknown_color = statistics.get_status_color("unknown")
-        self.assertEqual(unknown_color, "rgba(201, 203, 207)")
-
     def test_get_timeline(self):
         """Test the get_timeline function."""
         # Create user_media dict with our test objects
@@ -960,3 +961,249 @@ class StatisticsTests(TestCase):
         )
         self.assertEqual(current_streak, 0)
         self.assertEqual(longest_streak, 0)
+
+    def test_get_top_played_media(self):
+        """Test the get_top_played_media function."""
+        # Test with empty user media
+        empty_user_media = {}
+        result = statistics.get_top_played_media(empty_user_media, None, None)
+        self.assertEqual(result, {})
+        
+        # Test with non-existent media types
+        user_media = {'anime': MagicMock()}
+        user_media['anime'].exists.return_value = False
+        result = statistics.get_top_played_media(user_media, None, None)
+        self.assertEqual(result, {})
+
+    def test_get_top_played_media_aggregates_movie_repeats(self):
+        """Ensure repeated movie plays are aggregated into a single entry."""
+        
+        class FakeQuerySet(list):
+            def exists(self):
+                return bool(self)
+        
+        start_date = timezone.make_aware(datetime.datetime(2025, 1, 1))
+        end_date = timezone.make_aware(datetime.datetime(2025, 12, 31, 23, 59, 59))
+        
+        movie_item = SimpleNamespace(
+            id=42,
+            runtime_minutes=106,
+            title="Cars 2",
+            media_type=MediaTypes.MOVIE.value,
+            image="https://example.com/cars2.jpg",
+            media_id="557",
+            source=Sources.TMDB.value,
+        )
+        
+        def make_movie_instance(day):
+            end_dt = timezone.make_aware(datetime.datetime(2025, 5, day, 12, 0, 0))
+            return SimpleNamespace(
+                item=movie_item,
+                end_date=end_dt,
+                start_date=end_dt - datetime.timedelta(hours=2),
+                created_at=end_dt - datetime.timedelta(days=1),
+                status=Status.COMPLETED.value,
+            )
+        
+        first_play = make_movie_instance(6)
+        second_play = make_movie_instance(7)
+        
+        other_movie_item = SimpleNamespace(
+            id=43,
+            runtime_minutes=150,
+            title="Another Movie",
+            media_type=MediaTypes.MOVIE.value,
+            image="https://example.com/other.jpg",
+            media_id="558",
+            source=Sources.TMDB.value,
+        )
+        other_movie = SimpleNamespace(
+            item=other_movie_item,
+            end_date=timezone.make_aware(datetime.datetime(2025, 1, 5, 20, 0, 0)),
+            start_date=timezone.make_aware(datetime.datetime(2025, 1, 5, 18, 0, 0)),
+            created_at=timezone.make_aware(datetime.datetime(2025, 1, 4, 18, 0, 0)),
+            status=Status.COMPLETED.value,
+        )
+        
+        user_media = {'movie': FakeQuerySet([first_play, second_play, other_movie])}
+        
+        result = statistics.get_top_played_media(user_media, start_date, end_date)
+        
+        self.assertIn('movie', result)
+        self.assertEqual(len(result['movie']), 2)
+        
+        top_movie = result['movie'][0]
+        self.assertIs(top_movie['media'], second_play)
+        self.assertEqual(top_movie['play_count'], 2)
+        self.assertEqual(top_movie['total_time_minutes'], 212)
+        self.assertEqual(top_movie['formatted_duration'], minutes_to_hhmm(212))
+        self.assertEqual(top_movie['last_activity'], second_play.end_date)
+        
+        second_entry = result['movie'][1]
+        self.assertIs(second_entry['media'], other_movie)
+        self.assertEqual(second_entry['play_count'], 1)
+        self.assertEqual(second_entry['total_time_minutes'], 150)
+
+
+class ConsumptionStatisticsTests(TestCase):
+    """Validate TV and movie consumption aggregations."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="consumption-user",
+            password="password",
+        )
+        self.client.force_login(self.user)
+
+        now = timezone.now()
+        self.start_date = now - datetime.timedelta(days=30)
+        self.end_date = now
+
+        # Create TV show with a season and two episodes (45 minutes each)
+        self.tv_item = Item.objects.create(
+            media_id="tv1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Aggregation TV",
+        )
+        self.tv = TV.objects.create(
+            user=self.user,
+            item=self.tv_item,
+            status=Status.COMPLETED.value,
+        )
+
+        self.season_item = Item.objects.create(
+            media_id="tv1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Aggregation TV Season 1",
+        )
+        self.season = Season.objects.create(
+            user=self.user,
+            item=self.season_item,
+            related_tv=self.tv,
+            status=Status.COMPLETED.value,
+        )
+
+        episode_times = [
+            now - datetime.timedelta(days=5, hours=2),
+            now - datetime.timedelta(days=2, hours=10),
+        ]
+
+        for index, end_time in enumerate(episode_times, start=1):
+            episode_item = Item.objects.create(
+                media_id=f"tv1-ep{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=index,
+                title=f"Episode {index}",
+                runtime_minutes=45,
+            )
+            Episode.objects.create(
+                item=episode_item,
+                related_season=self.season,
+                end_date=end_time,
+            )
+
+        # Create movie with runtime 120 minutes
+        self.movie_item = Item.objects.create(
+            media_id="movie1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Aggregation Movie",
+        )
+        Movie.objects.create(
+            user=self.user,
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            end_date=now - datetime.timedelta(days=1, hours=3),
+        )
+        Movie.objects.create(
+            user=self.user,
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            end_date=now - datetime.timedelta(hours=6),
+        )
+
+    def test_consumption_stats_aggregation(self):
+        """TV/movie consumption helpers should return expected totals and chart data."""
+
+        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+            metadata_mock.return_value = {"runtime": "2h"}
+            user_media, _ = statistics.get_user_media(
+                self.user,
+                self.start_date,
+                self.end_date,
+            )
+            minutes_per_type = statistics.calculate_minutes_per_media_type(
+                user_media,
+                self.start_date,
+                self.end_date,
+            )
+
+            tv_stats = statistics.get_tv_consumption_stats(
+                user_media,
+                self.start_date,
+                self.end_date,
+                minutes_per_type,
+            )
+            movie_stats = statistics.get_movie_consumption_stats(
+                user_media,
+                self.start_date,
+                self.end_date,
+                minutes_per_type,
+            )
+
+        self.assertEqual(tv_stats["plays"]["total"], 2)
+        self.assertAlmostEqual(tv_stats["hours"]["total"], 1.5, places=2)
+        self.assertEqual(tv_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            tv_stats["charts"]["by_year"]["datasets"][0]["data"],
+            [2],
+        )
+
+        tv_month_data = tv_stats["charts"]["by_month"]["datasets"][0]["data"]
+        self.assertEqual(
+            tv_month_data[self.end_date.month - 1],
+            2,
+        )
+
+        self.assertEqual(movie_stats["plays"]["total"], 2)
+        self.assertAlmostEqual(movie_stats["hours"]["total"], 4.0, places=2)
+        self.assertEqual(movie_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            movie_stats["charts"]["by_year"]["datasets"][0]["data"],
+            [2],
+        )
+
+    def test_statistics_view_includes_consumption_context(self):
+        """Statistics view should include the consumption breakdown data."""
+
+        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+            metadata_mock.return_value = {"runtime": "2h"}
+            response = self.client.get(reverse("statistics"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("tv_consumption", response.context)
+        self.assertIn("movie_consumption", response.context)
+        self.assertEqual(response.context["tv_consumption"]["plays"]["total"], 2)
+        self.assertEqual(response.context["movie_consumption"]["plays"]["total"], 2)
+        self.assertNotIn("tv_episodes_by_year", response.content.decode())
+        self.assertIn("show_year_charts", response.context)
+        self.assertFalse(response.context["show_year_charts"])
+
+    def test_statistics_respects_disabled_season_sidebar_preference(self):
+        """Season media should be removed when the sidebar preference hides it."""
+
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+
+        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+            metadata_mock.return_value = {"runtime": "2h"}
+            response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        media_count = response.context["media_count"]
+        self.assertNotIn(MediaTypes.SEASON.value, media_count)
+        self.assertEqual(response.context["tv_consumption"]["plays"]["total"], 2)

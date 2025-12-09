@@ -66,3 +66,18 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             "imdb_id": provider_ids.get("Imdb"),
             "tvdb_id": provider_ids.get("Tvdb"),
         }
+
+    def _extract_season_episode_from_payload(self, payload):
+        """Extract season and episode numbers from Jellyfin payload."""
+        item = payload.get("Item", {})
+        season_number = item.get("ParentIndexNumber")
+        episode_number = item.get("IndexNumber")
+        
+        # Convert to int if they exist
+        try:
+            season_number = int(season_number) if season_number is not None else None
+            episode_number = int(episode_number) if episode_number is not None else None
+        except (ValueError, TypeError):
+            return None, None
+        
+        return season_number, episode_number

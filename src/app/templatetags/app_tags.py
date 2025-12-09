@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import date, timedelta
 
 from django import template
 from django.conf import settings
@@ -7,8 +8,9 @@ from django.utils import formats, timezone
 from django.utils.html import format_html
 from unidecode import unidecode
 
-from app import media_type_config
+from app import config
 from app.models import MediaTypes, Sources, Status
+from users.models import TimeFormatChoices
 
 register = template.Library()
 
@@ -109,45 +111,43 @@ def media_status_readable(media_status):
 @register.filter
 def default_source(media_type):
     """Return the default source for the media type."""
-    return media_type_config.get_default_source_name(media_type)
+    return config.get_default_source_name(media_type).label
 
 
 @register.filter
 def media_past_verb(media_type):
     """Return the past tense verb for the given media type."""
-    return media_type_config.get_verb(media_type, past_tense=True)
+    return config.get_verb(media_type, past_tense=True)
 
 
 @register.filter
 def sample_search(media_type):
     """Return a sample search URL for the given media type using GET parameters."""
-    return media_type_config.get_sample_search_url(media_type)
+    return config.get_sample_search_url(media_type)
 
 
 @register.filter
 def short_unit(media_type):
     """Return the short unit for the media type."""
-    return media_type_config.get_unit(media_type, short=True)
+    return config.get_unit(media_type, short=True)
 
 
 @register.filter
 def long_unit(media_type):
     """Return the long unit for the media type."""
-    return media_type_config.get_unit(media_type, short=False)
+    return config.get_unit(media_type, short=False)
 
 
 @register.filter
 def sources(media_type):
     """Template filter to get source options for a media type."""
-    return media_type_config.get_sources(media_type)
+    return config.get_sources(media_type)
 
 
 @register.simple_tag
 def get_search_media_types(user):
     """Return available media types for search based on user preferences."""
-    enabled_types = (
-        user.get_enabled_media_types() if user.hide_from_search else MediaTypes.values
-    )
+    enabled_types = user.get_enabled_media_types()
 
     # Filter and format the types for search
     return [
@@ -178,7 +178,13 @@ def get_sidebar_media_types(user):
 @register.filter
 def media_color(media_type):
     """Return the color associated with the media type."""
-    return media_type_config.get_text_color(media_type)
+    return config.get_text_color(media_type)
+
+
+@register.filter
+def status_color(status):
+    """Return the color associated with the status."""
+    return config.get_status_text_color(status)
 
 
 @register.filter
@@ -204,6 +210,37 @@ def natural_day(value):
 
     # For dates further away
     return value.strftime("%b %d")
+
+
+@register.filter
+def user_event_time(event, user):
+    """Format event time according to user's time format preference."""
+    if not event or not user or event.is_sentinel_time:
+        return ""
+    
+    try:
+        local_dt = timezone.localtime(event.datetime)
+        
+        if user.time_format == TimeFormatChoices.SYSTEM_DEFAULT:
+            time_str = formats.date_format(local_dt, "TIME_FORMAT")
+        elif user.time_format == TimeFormatChoices.H_MM_AMPM:
+            # Use %I and manually remove leading zero for cross-platform compatibility
+            hour = str(local_dt.hour % 12 or 12)  # Convert 0 to 12 for 12-hour format
+            time_str = f"{hour}:{local_dt.strftime('%M %p')}"
+        elif user.time_format == TimeFormatChoices.HH_MM_AMPM:
+            time_str = local_dt.strftime("%I:%M %p")
+        elif user.time_format == TimeFormatChoices.HH_MM:
+            time_str = local_dt.strftime("%H:%M")
+        elif user.time_format == TimeFormatChoices.HH_MM_SS:
+            time_str = local_dt.strftime("%H:%M:%S")
+        else:
+            time_str = formats.date_format(local_dt, "TIME_FORMAT")
+        
+        return f"at {time_str}"
+    except (ValueError, TypeError, AttributeError):
+        # Fallback to default format if there's an error
+        local_dt = timezone.localtime(event.datetime)
+        return f"at {local_dt.strftime('%H:%M')}"
 
 
 @register.filter
@@ -300,7 +337,7 @@ def component_id(component_type, media, instance_id=None):
 @register.simple_tag
 def unicode_icon(name):
     """Return the Unicode icon for the media type."""
-    return media_type_config.get_unicode_icon(name)
+    return config.get_unicode_icon(name)
 
 
 @register.simple_tag
@@ -335,9 +372,9 @@ def icon(name, is_active, extra_classes="w-5 h-5"):
                <line x1="6" x2="6" y1="20" y2="14"></line>"""
         ),
         "history": (
-            """<line x1="18" x2="18" y1="20" y2="10"></line>
-               <line x1="12" x2="12" y1="20" y2="4"></line>
-               <line x1="6" x2="6" y1="20" y2="14"></line>"""
+            """<path d="M3 3v5h5"></path>
+               <path d="M3.05 13a9 9 0 1 0 .5-5.5"></path>
+               <path d="M12 7v5l3 3"></path>"""
         ),
         "lists": (
             """<path d="M12 10v6"></path>
@@ -371,10 +408,9 @@ def icon(name, is_active, extra_classes="w-5 h-5"):
     }
 
     if name in MediaTypes.values:
-        content = media_type_config.get_svg_icon(name)
+        content = config.get_svg_icon(name)
     else:
         content = other_icons[name]
-
     active_class = "text-indigo-400 " if is_active else ""
 
     svg = base_svg.format(
@@ -439,3 +475,113 @@ def get_pagination_range(current_page, total_pages, window):
         result.append(total_pages)
 
     return result
+
+
+def _check_same_day_ranges(start_date, end_date, today):
+    """Check for same-day date ranges like Today and Yesterday."""
+    if start_date == end_date:
+        if start_date == today:
+            return "Today"
+        elif start_date == today - timedelta(days=1):
+            return "Yesterday"
+    return None
+
+
+def _check_week_ranges(start_date, end_date, today):
+    """Check for week-based date ranges."""
+    days_diff = (end_date - start_date).days
+    if days_diff == 6:  # 7 days including start and end
+        if start_date == today - timedelta(days=6):
+            return "This Week"
+        elif start_date == today - timedelta(days=13):
+            return "Last Week"
+        else:
+            return "Last 7 Days"
+    return None
+
+
+def _check_month_ranges(start_date, end_date, today):
+    """Check for month-based date ranges."""
+    days_diff = (end_date - start_date).days
+    if days_diff == 29:  # 30 days including start and end
+        if start_date == today - timedelta(days=29):
+            return "This Month"
+        elif start_date == today - timedelta(days=59):
+            return "Last Month"
+        else:
+            return "Last 30 Days"
+    return None
+
+
+def _check_extended_ranges(start_date, end_date):
+    """Check for extended date ranges like 90 days, 6 months, and 1 year."""
+    days_diff = (end_date - start_date).days
+    
+    # Check for 90 days
+    if days_diff == 89:  # 90 days including start and end
+        return "Last 90 Days"
+    
+    # Check for 6 months (approximately 180 days)
+    if 175 <= days_diff <= 185:
+        return "Last 6 Months"
+    
+    # Check for year ranges
+    if days_diff == 364:  # 365 days including start and end
+        return "Last 12 Months"
+    
+    return None
+
+
+def _is_predefined_date_range(start_date, end_date, today):
+    """Check if the date range matches any predefined ranges."""
+    # Check same-day ranges
+    result = _check_same_day_ranges(start_date, end_date, today)
+    if result:
+        return result
+    
+    # Check week ranges
+    result = _check_week_ranges(start_date, end_date, today)
+    if result:
+        return result
+    
+    # Check month ranges
+    result = _check_month_ranges(start_date, end_date, today)
+    if result:
+        return result
+    
+    # Check extended ranges
+    result = _check_extended_ranges(start_date, end_date)
+    if result:
+        return result
+    
+    return None
+
+
+@register.filter
+def format_date_range_display(start_date, end_date):
+    """Format date range for display in card titles.
+    
+    Returns a human-readable string like "Last 12 Months" or "Date Range"
+    based on whether it's a predefined range or custom dates.
+    """
+    if start_date is None and end_date is None:
+        return "All Time"
+    
+    if start_date is None or end_date is None:
+        return "Date Range"
+    
+    # Convert to date objects if they're datetime
+    if hasattr(start_date, 'date'):
+        start_date = start_date.date()
+    if hasattr(end_date, 'date'):
+        end_date = end_date.date()
+    
+    today = date.today()
+    
+    # Check for predefined ranges
+    predefined_range = _is_predefined_date_range(start_date, end_date, today)
+    if predefined_range:
+        return predefined_range
+    
+    # If none of the predefined ranges match, return "Date Range"
+    return "Date Range"

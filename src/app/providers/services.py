@@ -9,8 +9,17 @@ from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
 from app.models import MediaTypes, Sources
-from app.providers import (comicvine, googlebooks, hardcover, igdb, mal,
-                           mangaupdates, manual, openlibrary, tmdb)
+from app.providers import (
+    bgg,
+    comicvine,
+    hardcover,
+    igdb,
+    mal,
+    mangaupdates,
+    manual,
+    openlibrary,
+    tmdb,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +183,7 @@ def get_media_metadata(
         if source == Sources.HARDCOVER.value
         else openlibrary.book(media_id),
         MediaTypes.COMIC.value: lambda: comicvine.comic(media_id),
+        MediaTypes.BOARDGAME.value: lambda: bgg.metadata(media_id),
     }
     return metadata_retrievers[media_type]()
 
@@ -189,6 +199,8 @@ def search(media_type, query, page, source=None):
         response = mal.search(media_type, query, page)
     elif media_type in (MediaTypes.TV.value, MediaTypes.MOVIE.value):
         response = tmdb.search(media_type, query, page)
+    elif media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
+        response = tmdb.search(MediaTypes.TV.value, query, page)
     elif media_type == MediaTypes.GAME.value:
         response = igdb.search(query, page)
     elif media_type == MediaTypes.BOOK.value:
@@ -200,5 +212,7 @@ def search(media_type, query, page, source=None):
             response = hardcover.search(query, page)
     elif media_type == MediaTypes.COMIC.value:
         response = comicvine.search(query, page)
+    elif media_type == MediaTypes.BOARDGAME.value:
+        response = bgg.search(query, page)
 
     return response
