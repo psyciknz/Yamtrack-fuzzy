@@ -1,4 +1,4 @@
-import logging  # noqa: I001
+import logging
 from datetime import timedelta
 
 from django.apps import apps
@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.core.paginator import Paginator
+from django.core.paginator import EmptyPage, Paginator
 from django.db import IntegrityError
 from django.db.models import prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -17,15 +17,24 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import helpers
-from app import history as history_utils
-from app import history_processor
+from app import cache_utils, config, helpers, history_cache, history_processor
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
-from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
+from app.models import (
+    TV,
+    BasicMedia,
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    Season,
+    Sources,
+    Status,
+)
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
 from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +61,7 @@ def home(request):
         return render(request, "app/components/home_grid.html", context)
 
     context = {
+        "user": request.user,
         "list_by_type": list_by_type,
         "current_sort": sort_by,
         "sort_choices": HomeSortChoices.choices,
@@ -94,6 +104,7 @@ def progress_edit(request, media_type, instance_id):
 @require_GET
 def media_list(request, media_type):
     """Return the media list page."""
+    previous_sort = getattr(request.user, f"{media_type}_sort")
     layout = request.user.update_preference(
         f"{media_type}_layout",
         request.GET.get("layout"),
@@ -102,6 +113,28 @@ def media_list(request, media_type):
         f"{media_type}_sort",
         request.GET.get("sort"),
     )
+    direction_param = request.GET.get("direction")
+    direction_field = f"{media_type}_direction"
+    
+    # If time_left sort is selected for non-TV media types, fallback to default
+    if sort_filter == "time_left" and media_type != MediaTypes.TV.value:
+        sort_filter = "title"  # Default fallback
+        # Update the user's preference to the fallback
+        request.user.update_preference(f"{media_type}_sort", "title")
+        # Reset direction to the default for the fallback sort
+        direction_param = None
+
+    # Resolve and persist sort direction with the same preference flow as sort
+    direction_pref = getattr(request.user, direction_field, None)
+    if direction_param is not None:
+        direction = BasicMedia.objects.resolve_direction(sort_filter, direction_param)
+        request.user.update_preference(direction_field, direction)
+    else:
+        if sort_filter != previous_sort or direction_pref is None:
+            direction = BasicMedia.objects.resolve_direction(sort_filter, None)
+        else:
+            direction = BasicMedia.objects.resolve_direction(sort_filter, direction_pref)
+        request.user.update_preference(direction_field, direction)
     status_filter = request.user.update_preference(
         f"{media_type}_status",
         request.GET.get("status"),
@@ -120,25 +153,86 @@ def media_list(request, media_type):
         status_filter=status_filter,
         sort_filter=sort_filter,
         search=search_query,
+        direction=direction,
     )
 
-    # Paginate results
-    items_per_page = 32
-    paginator = Paginator(media_queryset, items_per_page)
-    media_page = paginator.get_page(page)
+    # Handle time_left sorting for TV shows
+    if sort_filter == "time_left" and media_type == MediaTypes.TV.value:
+        import logging
+        from django.core.cache import cache
+        
+        logger = logging.getLogger(__name__)
+        
+        # Cache sorted results for 5 minutes to avoid expensive re-sorts
+        cache_key = cache_utils.build_time_left_cache_key(
+            request.user.id,
+            media_type,
+            status_filter,
+            search_query,
+            direction,
+        )
+        cached_results = cache.get(cache_key)
+        
+        if cached_results is not None:
+            logger.debug(f"DEBUG: Using cached time_left sort (page {page})")
+            media_list = cached_results
+        else:
+            logger.debug(f"DEBUG: Starting time_left sort for page {page} (no cache)")
+            
+            # Get all media objects for sorting
+            media_list = list(media_queryset)
+            logger.debug(f"DEBUG: Got {len(media_list)} media objects from queryset")
+            
+            # Annotate max_progress first
+            BasicMedia.objects.annotate_max_progress(media_list, media_type)
+            logger.debug(f"DEBUG: Annotated max_progress for all media")
+            
+            # Apply time_left sorting
+            media_list = _sort_tv_media_by_time_left(media_list, direction)
+            logger.debug(f"DEBUG: Applied time_left sorting")
+            
+            # Cache for 5 minutes (300 seconds)
+            cache.set(cache_key, media_list, 300)
+            cache_utils.register_time_left_cache_key(request.user.id, cache_key)
+        
+        # Paginate the sorted list
+        items_per_page = 32
+        paginator = Paginator(media_list, items_per_page)
+        media_page = paginator.get_page(page)
+        
+        logger.debug(f"DEBUG: Paginated to page {page} of {paginator.num_pages} pages")
+        logger.debug(f"DEBUG: This page has {len(media_page)} items")
+        
+        # Log the first few items on this page to see what's being displayed
+        logger.debug(f"DEBUG: First 5 items on page {page}:")
+        for i, media in enumerate(media_page[:5]):
+            episodes_left = media.max_progress - media.progress if hasattr(media, 'max_progress') else 0
+            logger.debug(f"  {i+1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}")
+        
+        # Additional debug info for pagination issues
+        logger.debug(f"DEBUG: Page {page} pagination info - has_next: {media_page.has_next()}, next_page: {media_page.next_page_number() if media_page.has_next() else 'None'}")
+        if hasattr(media_page, 'has_previous') and media_page.has_previous():
+            logger.debug(f"DEBUG: Page {page} has previous page: {media_page.previous_page_number()}")
+    else:
+        # Paginate results normally
+        items_per_page = 32
+        paginator = Paginator(media_queryset, items_per_page)
+        media_page = paginator.get_page(page)
 
-    BasicMedia.objects.annotate_max_progress(
-        media_page.object_list,
-        media_type,
-    )
+        BasicMedia.objects.annotate_max_progress(
+            media_page.object_list,
+            media_type,
+        )
 
     context = {
+        "user": request.user,
         "media_type": media_type,
         "media_type_plural": app_tags.media_type_readable_plural(media_type).lower(),
         "media_list": media_page,
         "current_layout": layout,
-        "layout_class": ".media-grid" if layout == "grid" else "tbody",
+        "layout_class": ".media-grid" if layout == "grid" else ".media-table",
         "current_sort": sort_filter,
+        "current_direction": direction,
         "current_status": status_filter,
         "sort_choices": MediaSortChoices.choices,
         "status_choices": MediaStatusChoices.choices,
@@ -151,11 +245,23 @@ def media_list(request, media_type):
             response = HttpResponse()
             response["HX-Redirect"] = reverse("medialist", args=[media_type])
             return response
+        
+        # Check if this is a pagination request (has page parameter and is not the first page)
+        is_pagination = request.GET.get("page") and int(request.GET.get("page", 1)) > 1
+        
         if layout == "grid":
             template_name = "app/components/media_grid_items.html"
         else:
-            template_name = "app/components/media_table_items.html"
+            if is_pagination:
+                # For pagination, we need to return only the table rows, not the full template
+                # Return only the table rows without headers
+                context["is_pagination"] = True
+                template_name = "app/components/media_table_items.html"
+            else:
+                context["is_pagination"] = False
+                template_name = "app/components/media_table_items.html"
     else:
+        context["is_pagination"] = False
         template_name = "app/media_list.html"
 
     return render(request, template_name, context)
@@ -173,7 +279,10 @@ def media_search(request):
     layout = request.GET.get("layout", "grid")
 
     # only receives source when searching with secondary source
-    source = request.GET.get("source")
+    source = request.GET.get(
+        "source",
+        config.get_default_source_name(media_type).value,
+    )
 
     data = services.search(media_type, query, page, source)
 
@@ -182,6 +291,7 @@ def media_search(request):
         data["results"] = helpers.enrich_items_with_user_data(request, data["results"])
 
     context = {
+        "user": request.user,
         "data": data,
         "source": source,
         "media_type": media_type,
@@ -192,7 +302,9 @@ def media_search(request):
 
 
 @require_GET
-def media_details(request, source, media_type, media_id, title):  # noqa: ARG001 title for URL
+def media_details(
+    request, source, media_type, media_id, title
+):  # noqa: ARG001 title for URL
     """Return the details page for a media item."""
     media_metadata = services.get_media_metadata(media_type, media_id, source)
     user_medias = BasicMedia.objects.filter_media_prefetch(
@@ -203,15 +315,40 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
     )
     current_instance = user_medias[0] if user_medias else None
 
+    # Apply the same rating aggregation logic as in the media list
+    if user_medias and len(user_medias) > 1:
+        latest_rating = None
+        latest_activity = None
+
+        for user_media in user_medias:
+            if user_media.score is not None:
+                if user_media.end_date:
+                    entry_activity = user_media.end_date
+                elif user_media.progressed_at:
+                    entry_activity = user_media.progressed_at
+                else:
+                    entry_activity = user_media.created_at
+
+                if latest_activity is None or entry_activity > latest_activity:
+                    latest_activity = entry_activity
+                    latest_rating = user_media.score
+
+        if latest_rating is not None:
+            current_instance.score = latest_rating
+
     # Enrich related items with user tracking data
     if media_metadata.get("related"):
         for section_name, related_items in media_metadata["related"].items():
             if related_items:
-                media_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
-                    request, related_items
+                media_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        request,
+                        related_items,
+                    )
                 )
 
     context = {
+        "user": request.user,
         "media": media_metadata,
         "media_type": media_type,
         "user_medias": user_medias,
@@ -221,7 +358,9 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
 
 
 @require_GET
-def season_details(request, source, media_id, title, season_number):  # noqa: ARG001 For URL
+def season_details(
+    request, source, media_id, title, season_number
+):  # noqa: ARG001 For URL
     """Return the details page for a season."""
     tv_with_seasons_metadata = services.get_media_metadata(
         "tv_with_seasons",
@@ -240,6 +379,33 @@ def season_details(request, source, media_id, title, season_number):  # noqa: AR
     )
 
     current_instance = user_medias[0] if user_medias else None
+    
+    # Apply the same rating aggregation logic as in the media list
+    if user_medias and len(user_medias) > 1:
+        # Find the most recent rating among all entries
+        latest_rating = None
+        latest_activity = None
+        
+        for user_media in user_medias:
+            if user_media.score is not None:
+                # Determine the most recent activity for this entry
+                entry_activity = None
+                if user_media.end_date:
+                    entry_activity = user_media.end_date
+                elif user_media.progressed_at:
+                    entry_activity = user_media.progressed_at
+                else:
+                    entry_activity = user_media.created_at
+                
+                # If this entry has more recent activity, use its rating
+                if latest_activity is None or entry_activity > latest_activity:
+                    latest_activity = entry_activity
+                    latest_rating = user_media.score
+        
+        # Update the current_instance score to use the most recent rating
+        if latest_rating is not None:
+            current_instance.score = latest_rating
+    
     episodes_in_db = current_instance.episodes.all() if current_instance else []
 
     if source == Sources.MANUAL.value:
@@ -257,19 +423,15 @@ def season_details(request, source, media_id, title, season_number):  # noqa: AR
     if season_metadata.get("related"):
         for section_name, related_items in season_metadata["related"].items():
             if related_items:
-                season_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
-                    request, related_items
-                )
-
-    # Also enrich TV show related items if they exist
-    if tv_with_seasons_metadata.get("related"):
-        for section_name, related_items in tv_with_seasons_metadata["related"].items():
-            if related_items:
-                tv_with_seasons_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
-                    request, related_items
+                season_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        request,
+                        related_items,
+                    )
                 )
 
     context = {
+        "user": request.user,
         "media": season_metadata,
         "tv": tv_with_seasons_metadata,
         "media_type": MediaTypes.SEASON.value,
@@ -473,6 +635,7 @@ def track_modal(
         request,
         "app/components/fill_track.html",
         {
+            "user": request.user,
             "title": title,
             "form": form,
             "media": media,
@@ -503,7 +666,13 @@ def media_save(request):
             source,
             [season_number],
         )
-        item, _ = Item.objects.get_or_create(
+        # Extract runtime from metadata
+        runtime_minutes = None
+        if metadata.get("details", {}).get("runtime"):
+            from app.statistics import parse_runtime_to_minutes
+            runtime_minutes = parse_runtime_to_minutes(metadata["details"]["runtime"])
+        
+        item, created = Item.objects.get_or_create(
             media_id=media_id,
             source=source,
             media_type=media_type,
@@ -511,8 +680,20 @@ def media_save(request):
             defaults={
                 "title": metadata["title"],
                 "image": metadata["image"],
+                "runtime_minutes": runtime_minutes,
             },
         )
+        
+        # Update image and runtime if they're not set and we have them now
+        needs_save = False
+        if item.image == settings.IMG_NONE and metadata.get("image"):
+            item.image = metadata["image"]
+            needs_save = True
+        if not item.runtime_minutes and runtime_minutes:
+            item.runtime_minutes = runtime_minutes
+            needs_save = True
+        if needs_save:
+            item.save()
         model = apps.get_model(app_label="app", model_name=media_type)
         instance = model(item=item, user=request.user)
 
@@ -539,16 +720,18 @@ def media_delete(request):
     """Delete media data from the database."""
     instance_id = request.POST["instance_id"]
     media_type = request.POST["media_type"]
+    model = apps.get_model(app_label="app", model_name=media_type)
 
-    media = BasicMedia.objects.get_media(
-        request.user,
-        media_type,
-        instance_id,
-    )
-    if media:
+    try:
+        media = BasicMedia.objects.get_media(
+            request.user,
+            media_type,
+            instance_id,
+        )
         media.delete()
         logger.info("%s deleted successfully.", media)
-    else:
+
+    except model.DoesNotExist:
         logger.warning("The %s was already deleted before.", media_type)
 
     return helpers.redirect_back(request)
@@ -765,6 +948,7 @@ def history_modal(
         request,
         "app/components/fill_history.html",
         {
+            "user": request.user,
             "media_type": media_type,
             "timeline": timeline_entries,
             "total_medias": total_medias,
@@ -805,6 +989,43 @@ def delete_history_record(request, media_type, history_id):
 
 
 @require_GET
+def history(request):
+    """Show a day-by-day history of episode and movie plays."""
+    history_days_all = history_cache.get_history_days(request.user)
+
+    paginator = Paginator(history_days_all, history_cache.HISTORY_DAYS_PER_PAGE)
+
+    if paginator.count == 0:
+        page_obj = None
+        history_days = []
+        current_page = 1
+    else:
+        try:
+            page_number = int(request.GET.get("page", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+
+        try:
+            page_obj = paginator.page(page_number)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+
+        history_days = page_obj.object_list
+        current_page = page_obj.number
+
+    context = {
+        "user": request.user,
+        "history_days": history_days,
+        "page_obj": page_obj,
+        "current_page": current_page,
+        "total_pages": paginator.num_pages,
+        "total_days": paginator.count,
+        "days_per_page": paginator.per_page,
+    }
+    return render(request, "app/history.html", context)
+
+
+@require_GET
 def statistics(request):
     """Return the statistics page."""
     # Set default date range to last year
@@ -841,6 +1062,13 @@ def statistics(request):
         end_date,
     )
 
+    if not request.user.season_enabled:
+        season_key = MediaTypes.SEASON.value
+        season_count = media_count.pop(season_key, 0)
+        if season_count:
+            media_count["total"] = max(media_count.get("total", 0) - season_count, 0)
+        user_media.pop(season_key, None)
+
     # Calculate all statistics from the retrieved data
     media_type_distribution = stats.get_media_type_distribution(
         media_count,
@@ -850,11 +1078,47 @@ def statistics(request):
     status_pie_chart_data = stats.get_status_pie_chart_data(
         status_distribution,
     )
-    timeline = stats.get_timeline(user_media)
+    top_played = stats.get_top_played_media(user_media, start_date, end_date)
+    
+    # Calculate hours and detailed consumption summaries
+    minutes_per_media_type = stats.calculate_minutes_per_media_type(
+        user_media,
+        start_date,
+        end_date,
+    )
+    hours_per_media_type = stats.get_hours_per_media_type(
+        user_media,
+        start_date,
+        end_date,
+        minutes_per_media_type,
+    )
+    tv_consumption = stats.get_tv_consumption_stats(
+        user_media,
+        start_date,
+        end_date,
+        minutes_per_media_type,
+    )
+    movie_consumption = stats.get_movie_consumption_stats(
+        user_media,
+        start_date,
+        end_date,
+        minutes_per_media_type,
+    )
+
+    # Daily hours per media type (used by the Activity History-attached chart)
+    daily_hours_by_media_type = stats.get_daily_hours_by_media_type(
+        user_media,
+        start_date,
+        end_date,
+    )
 
     activity_data = stats.get_activity_data(request.user, start_date, end_date)
 
+    selected_range_name = _identify_predefined_range(start_date, end_date)
+    show_year_charts = selected_range_name in (None, "All Time")
+
     context = {
+        "user": request.user,
         "start_date": start_date,
         "end_date": end_date,
         "media_count": media_count,
@@ -862,108 +1126,385 @@ def statistics(request):
         "media_type_distribution": media_type_distribution,
         "score_distribution": score_distribution,
         "top_rated": top_rated,
+        "top_played": top_played,
         "status_distribution": status_distribution,
         "status_pie_chart_data": status_pie_chart_data,
-        "timeline": timeline,
+        "hours_per_media_type": hours_per_media_type,
+        "tv_consumption": tv_consumption,
+        "movie_consumption": movie_consumption,
+        "daily_hours_by_media_type": daily_hours_by_media_type,
+        "show_year_charts": show_year_charts,
     }
 
     return render(request, "app/statistics.html", context)
 
 
 @require_GET
-@login_required
-def history_view(request):
-    """Display user's media consumption history with individual episodes."""
-    # Get filter parameters
-    days_filter = request.GET.get("days", "30")
-    page_number = request.GET.get("page", 1)
+def service_worker(request):
+    """Serve the service worker file from static files."""
+    sw_path = settings.STATICFILES_DIRS[0] / "js" / "serviceworker.js"
+    with open(sw_path, encoding="utf-8") as sw_file:
+        response = HttpResponse(sw_file.read(), content_type="application/javascript")
+    response["Service-Worker-Allowed"] = "/"
+    return response
 
-    # Calculate date range based on filter
-    start_date = None
-    end_date = None
-    if days_filter != "all":
+
+def _sort_tv_media_by_time_left(media_list, direction="asc"):
+    """Sort TV media by time left with explicit grouping order.
+
+    Group order:
+      1) Active (episodes_left > 0 for non-dropped statuses) by least total time left first
+      2) In-Progress caught-up (episodes_left == 0) newest end_date first
+      3) Completed (episodes_left == 0) newest end_date first
+      4) Dropped (episodes_left may be 0 or > 0) newest end_date first
+      5) Unreleased/unknown runtime at the very end
+    """
+    from django.core.cache import cache
+    from app.statistics import parse_runtime_to_minutes
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    def _calc_runtime_minutes(media):
+        """Best-effort runtime in minutes for a TV show or fallback."""
+        runtime_minutes = None
+        # FIRST: Check locally stored runtime (but exclude 999999 marker for unknown)
+        if hasattr(media, 'item') and media.item.runtime_minutes:
+            # 999999 is a placeholder value meaning "unknown runtime" - skip it
+            if media.item.runtime_minutes < 999999:
+                runtime_minutes = media.item.runtime_minutes
+                logger.debug(f"Using stored runtime for {media.item.title}: {runtime_minutes}min")
+            else:
+                logger.debug(f"Skipping invalid runtime marker ({media.item.runtime_minutes}min) for {media.item.title}")
+        
+        if not runtime_minutes:
+            # SECOND: Check for episode-level runtime data from database
+            # This is the most accurate - uses actual episode runtimes that were saved when viewing season pages
+            from app.models import Item, MediaTypes
+            episodes_with_runtime = Item.objects.filter(
+                media_id=media.item.media_id,
+                source=media.item.source,
+                media_type=MediaTypes.EPISODE.value,
+                runtime_minutes__isnull=False
+            ).exclude(
+                runtime_minutes=999999
+            ).values_list('runtime_minutes', flat=True)
+            
+            if episodes_with_runtime.exists():
+                # Calculate average runtime from actual episodes
+                episode_runtimes = list(episodes_with_runtime)
+                runtime_minutes = round(sum(episode_runtimes) / len(episode_runtimes))
+                logger.debug(f"Using average episode runtime for {media.item.title}: {runtime_minutes}min (from {len(episode_runtimes)} episodes)")
+        
+        if not runtime_minutes:
+            # THIRD: Check cached season data (avg_runtime field from season metadata)
+            season_cache_key = f"tmdb_season_{media.item.media_id}_1"
+            cached_season_data = cache.get(season_cache_key)
+            if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+                runtime_str = cached_season_data["details"]["runtime"]
+                runtime_minutes = parse_runtime_to_minutes(runtime_str)
+                if runtime_minutes and runtime_minutes > 0:
+                    logger.debug(f"Using cached season avg runtime for {media.item.title}: {runtime_minutes}min")
+            # Try other seasons if season 1 didn't work
+            if not runtime_minutes:
+                for season_num in [2, 3, 4, 5]:
+                    season_cache_key = f"tmdb_season_{media.item.media_id}_{season_num}"
+                    cached_season_data = cache.get(season_cache_key)
+                    if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+                        runtime_str = cached_season_data["details"]["runtime"]
+                        runtime_minutes = parse_runtime_to_minutes(runtime_str)
+                        if runtime_minutes and runtime_minutes > 0:
+                            logger.debug(f"Using cached season {season_num} avg runtime for {media.item.title}: {runtime_minutes}min")
+                            break
+        
+        # FOURTH: Use industry standard fallback  
+        if not runtime_minutes or runtime_minutes <= 0:
+            if media.item.source == "tmdb":
+                runtime_minutes = 30
+            elif media.item.source == "mal":
+                runtime_minutes = 23
+            else:
+                runtime_minutes = 30
+            logger.debug(f"Using fallback runtime for {media.item.title}: {runtime_minutes}min")
+        return runtime_minutes
+
+    def _end_date_for_sort(media):
+        # Prefer aggregated_end_date when present, else media.end_date
+        return getattr(media, 'aggregated_end_date', None) or getattr(media, 'end_date', None) or getattr(media, 'progressed_at', None) or getattr(media, 'created_at', None)
+
+    def _effective_max_progress(media):
+        """Prefer annotated max_progress; fallback to DB episodes to avoid negatives."""
+        annotated = getattr(media, 'max_progress', 0) or 0
+        if annotated <= 0 or annotated < media.progress:
+            total_from_db = 0
+            # Use prefetched seasons/episodes when available
+            if hasattr(media, 'seasons'):
+                for season in media.seasons.all():
+                    if getattr(season.item, 'season_number', 0) and hasattr(season, 'episodes'):
+                        max_ep_num = 0
+                        for ep in season.episodes.all():
+                            ep_num = getattr(ep.item, 'episode_number', 0) or 0
+                            if ep_num > max_ep_num:
+                                max_ep_num = ep_num
+                        total_from_db += max_ep_num
+            return max(annotated, total_from_db)
+        return annotated
+
+    # Cache provider metadata lookups per (source, type, id)
+    RELEASE_SYNC_TTL_SECONDS = 3600
+
+    def _release_sync_cache_key(media):
+        return f"timeleft:release-sync:{media.item.source}:{media.item.media_id}"
+
+    def _refresh_release_metadata(media):
+        if media.item.source == Sources.MANUAL.value:
+            return
+
+        cache_key = _release_sync_cache_key(media)
+        if not cache.add(cache_key, True, RELEASE_SYNC_TTL_SECONDS):
+            return
+
         try:
-            days = int(days_filter)
-            end_date = timezone.now()
-            start_date = end_date - timedelta(days=days)
-        except (ValueError, TypeError):
-            pass  # Invalid filter, use all results
+            media.item.fetch_releases(delay=False)
+        except Exception:  # noqa: BLE001 - log and continue
+            logger.exception("Failed to refresh release metadata for %s", media.item)
+            return
 
-    # Get consumable media items using the existing stats function
-    consumable_items, media_count = history_utils.get_user_consumable_media(
-        request.user,
-        start_date,
-        end_date,
-    )
-    # Sort all items by completion date (most recent first)
-    sorted_items = sorted(
-        consumable_items,
-        key=lambda x: (
-            timezone.localtime(x.end_date)
-            if hasattr(x, "end_date") and x.end_date
-            else timezone.localtime(x.start_date)
-            if hasattr(x, "start_date") and x.start_date
-            else timezone.now()
-        ),
-        reverse=True,
-    )
-    # Calculate statistics
-    total_items = len(sorted_items)
-    movie_count = sum(1 for item in sorted_items if item.consumable_type == "movie")
-    episode_count = sum(1 for item in sorted_items if item.consumable_type == "episode")
-    anime_count = sum(1 for item in sorted_items if item.consumable_type == "anime")
-    game_count = sum(1 for item in sorted_items if item.consumable_type == "game")
-    book_count = sum(1 for item in sorted_items if item.consumable_type == "book")
+        BasicMedia.objects.annotate_max_progress([media], MediaTypes.TV.value)
 
-    # This week's count
-    week_ago = timezone.now() - timedelta(days=7)
-    week_count = sum(
-        1
-        for item in sorted_items
-        if (
-            (hasattr(item, "end_date") and item.end_date and item.end_date >= week_ago)
+    # Explicit bucketing for deterministic grouping
+    active_statuses = {Status.IN_PROGRESS.value, Status.PLANNING.value, Status.PAUSED.value}
+    group_active = []           # episodes_left > 0 and status in active_statuses
+    group_inprog_zero = []      # status == IN_PROGRESS and episodes_left == 0
+    group_completed = []        # status == COMPLETED and episodes_left == 0
+    group_dropped = []          # status == DROPPED
+    group_tail = []             # everything else (unreleased/unknown)
+
+    for media in media_list:
+        # Compute effective episodes_left
+        if not hasattr(media, 'max_progress'):
+            group_tail.append(media)
+            continue
+
+        annotated_max = getattr(media, 'max_progress', None)
+        status = getattr(media, 'status', Status.IN_PROGRESS.value)
+
+        should_refresh_release_data = (
+            (annotated_max is None and status in active_statuses)
+            or (annotated_max is not None and annotated_max < media.progress)
             or (
-                hasattr(item, "start_date")
-                and item.start_date
-                and item.start_date >= week_ago
+                status in active_statuses
+                and annotated_max is not None
+                and annotated_max == media.progress
             )
         )
+
+        if should_refresh_release_data:
+            _refresh_release_metadata(media)
+            annotated_max = getattr(media, 'max_progress', None)
+
+        fallback_max = _effective_max_progress(media) or 0
+
+        if annotated_max is None:
+            effective_max = max(fallback_max, media.progress)
+        else:
+            effective_max = max(annotated_max, fallback_max)
+
+        media.max_progress = effective_max
+        episodes_left = effective_max - media.progress
+        if episodes_left < 0:
+            episodes_left = 0
+        
+        # Debug shows that should have episodes left but show 0
+        if media.progress > 0 and episodes_left == 0 and media.item.title in ["Taskmaster", "Rent-a-Girlfriend", "The Last of Us"]:
+            logger.debug(f"DEBUG 0 episodes: {media.item.title} - progress={media.progress}, max_progress={effective_max}, episodes_left={episodes_left}")
+        
+        status = getattr(media, 'status', Status.IN_PROGRESS.value)
+
+        if status == Status.DROPPED.value:
+            group_dropped.append(media)
+            continue
+
+        if episodes_left == 0 and status == Status.IN_PROGRESS.value:
+            group_inprog_zero.append(media)
+            continue
+
+        if episodes_left == 0 and status == Status.COMPLETED.value:
+            group_completed.append(media)
+            continue
+
+        if episodes_left > 0 and status in active_statuses:
+            group_active.append((media, episodes_left))
+            continue
+
+        group_tail.append(media)
+
+    # Sort each group
+    # 1) Active by least total minutes left
+    def _active_key(entry):
+        media, episodes_left = entry
+        runtime = _calc_runtime_minutes(media)
+        if not runtime or runtime <= 0:
+            runtime = 30  # Ensure fallback is used
+        total = episodes_left * runtime
+        # Store the display values using non-property attributes
+        media.episodes_left_display = episodes_left
+        if total > 0:
+            hours = int(total // 60)
+            minutes = int(total % 60)
+            if hours > 0:
+                media.time_left_display = f"{hours}h {minutes}m"
+            else:
+                media.time_left_display = f"{minutes}m"
+        else:
+            media.time_left_display = f"{episodes_left} ep" if episodes_left > 0 else "-"
+        logger.debug(f"Active: {media.item.title} - {episodes_left} eps × {runtime}min = {total}min ({media.time_left_display})")
+        return (total, media.item.title.lower())
+    group_active_sorted = [m for (m, _) in sorted(group_active, key=_active_key)]
+
+    # 2) In-Progress caught-up by newest end_date
+    for m in group_inprog_zero:
+        m.episodes_left_display = 0
+        m.time_left_display = "0m"
+    group_inprog_zero_sorted = sorted(
+        group_inprog_zero,
+        key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
     )
 
-    # This month's count
-    month_ago = timezone.now() - timedelta(days=30)
-    month_count = sum(
-        1
-        for item in sorted_items
-        if (
-            (hasattr(item, "end_date") and item.end_date and item.end_date >= month_ago)
-            or (
-                hasattr(item, "start_date")
-                and item.start_date
-                and item.start_date >= month_ago
-            )
-        )
+    # 3) Completed by newest end_date
+    for m in group_completed:
+        m.episodes_left_display = 0
+        m.time_left_display = "0m"
+    group_completed_sorted = sorted(
+        group_completed,
+        key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float('-inf') ), m.item.title.lower()),
     )
 
-    # Paginate results
-    paginator = Paginator(sorted_items, 25)  # Show 25 items per page
-    page_obj = paginator.get_page(page_number)
+    # 4) Dropped - show remaining content (sorted by least time left)
+    for m in group_dropped:
+        # Debug logging for first few dropped shows
+        if not hasattr(m, '_debug_logged'):
+            m._debug_logged = True
+            logger.debug(f"Dropped show: {m.item.title} - progress={m.progress}, max_progress={getattr(m, 'max_progress', 'MISSING')}, hasattr={hasattr(m, 'max_progress')}")
+        
+        # Calculate episodes remaining (not watched)
+        if hasattr(m, 'max_progress') and hasattr(m, 'progress') and m.max_progress > 0:
+            episodes_left = m.max_progress - m.progress
+            if episodes_left < 0:
+                episodes_left = 0
+            m.episodes_left_display = episodes_left
+            
+            if episodes_left > 0:
+                runtime = _calc_runtime_minutes(m)
+                total = episodes_left * runtime
+                hours = int(total // 60)
+                minutes = int(total % 60)
+                if hours > 0:
+                    m.time_left_display = f"{hours}h {minutes}m"
+                else:
+                    m.time_left_display = f"{minutes}m"
+                logger.debug(f"Dropped: {m.item.title} - {episodes_left} eps left × {runtime}min = {total}min ({m.time_left_display})")
+            else:
+                m.time_left_display = "0m"
+        else:
+            # No max_progress data - show as unknown
+            logger.debug(f"Dropped show NO DATA: {m.item.title} - Setting '-' display")
+            m.episodes_left_display = 0
+            m.time_left_display = "-"
+    
+    # Sort dropped by least time left (ascending), then by title
+    group_dropped_sorted = sorted(
+        group_dropped,
+        key=lambda m: (m.episodes_left_display * _calc_runtime_minutes(m), m.item.title.lower()),
+    )
+    
+    # 5) Tail (unreleased/unknown) - set display values
+    for m in group_tail:
+        m.episodes_left_display = 0
+        m.time_left_display = "-"
 
-    context = {
-        "history_items": page_obj,
-        "page_obj": page_obj,
-        "paginator": paginator,
-        "is_paginated": page_obj.has_other_pages(),
-        "total_items": total_items,
-        "movie_count": movie_count,
-        "episode_count": episode_count,
-        "anime_count": anime_count,
-        "game_count": game_count,
-        "book_count": book_count,
-        "week_count": week_count,
-        "month_count": month_count,
-        "current_filter": days_filter,
-        "media_count": media_count,
-    }
+    sorted_list = (
+        group_active_sorted
+        + group_inprog_zero_sorted
+        + group_completed_sorted
+        + group_dropped_sorted
+        + group_tail
+    )
+    logger.debug(
+        "DEBUG: Group counts -> active: %d, inprog_zero: %d, completed: %d, dropped: %d, tail: %d",
+        len(group_active_sorted), len(group_inprog_zero_sorted), len(group_completed_sorted), len(group_dropped_sorted), len(group_tail)
+    )
+    
+    # Log first 10 items for debugging
+    logger.debug("DEBUG: First 10 sorted shows:")
+    for i, media in enumerate(sorted_list[:10]):
+        episodes_left = media.max_progress - media.progress if hasattr(media, 'max_progress') else 0
+        logger.debug(f"  {i+1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}")
+    
+    if direction == "desc":
+        return list(reversed(sorted_list))
 
-    return render(request, "app/history.html", context)
+    return sorted_list
+
+
+def _identify_predefined_range(start_date, end_date):
+    if start_date is None and end_date is None:
+        return "All Time"
+
+    if not start_date or not end_date:
+        return None
+
+    # Use timezone.localdate to avoid off-by-one when converting aware datetimes
+    # (localtime(...).date() can shift the date if the aware datetime is at UTC midnight)
+    local_start = timezone.localdate(start_date)
+    local_end = timezone.localdate(end_date)
+    today = timezone.localdate()
+
+    if local_start == today and local_end == today:
+        return "Today"
+
+    yesterday = today - timedelta(days=1)
+    if local_start == yesterday and local_end == yesterday:
+        return "Yesterday"
+
+    monday = today - timedelta(days=today.weekday())
+    if local_start == monday and local_end == today:
+        return "This Week"
+
+    if local_start == today - timedelta(days=6) and local_end == today:
+        return "Last 7 Days"
+
+    month_start = today.replace(day=1)
+    if local_start == month_start and local_end == today:
+        return "This Month"
+
+    if local_start == today - timedelta(days=29) and local_end == today:
+        return "Last 30 Days"
+
+    if local_start == today - timedelta(days=89) and local_end == today:
+        return "Last 90 Days"
+
+    year_start = today.replace(month=1, day=1)
+    if local_start == year_start and local_end == today:
+        return "This Year"
+
+    six_months_start = _adjust_month_delta(today, months=6)
+    if _dates_close(local_start, six_months_start) and local_end == today:
+        return "Last 6 Months"
+
+    twelve_months_start = _adjust_month_delta(today, months=12)
+    if _dates_close(local_start, twelve_months_start) and local_end == today:
+        return "Last 12 Months"
+
+    return None
+
+
+def _adjust_month_delta(reference_date, months):
+    candidate = reference_date - relativedelta(months=months)
+    if candidate.day != reference_date.day:
+        candidate = (candidate.replace(day=1) + relativedelta(months=1)) - timedelta(days=1)
+    return candidate
+
+
+def _dates_close(date_one, date_two, tolerance_days=1):
+    return abs((date_one - date_two).days) <= tolerance_days

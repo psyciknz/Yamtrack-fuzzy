@@ -41,6 +41,14 @@ class BaseWebhookProcessor:
         """Get media title from payload."""
         raise NotImplementedError
 
+    def _extract_season_episode_from_payload(self, payload):
+        """Extract season and episode numbers from payload.
+        
+        Override in subclasses if payload structure differs.
+        Returns (season_number, episode_number) or (None, None) if not found.
+        """
+        return None, None
+
     def _process_media(self, payload, user, ids):
         """Route processing based on media type."""
         media_type = self._get_media_type(payload)
@@ -56,15 +64,84 @@ class BaseWebhookProcessor:
         elif media_type == MediaTypes.MOVIE.value:
             self._process_movie(payload, user, ids)
 
-    def _process_tv(self, payload, user, ids):
-        media_id, season_number, episode_number = self._find_tv_media_id(ids)
+    def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
+        """Process TV episode webhook.
+        
+        Args:
+            payload: Webhook payload
+            user: User instance
+            ids: Extracted external IDs
+            season_number: Season number from payload (optional, will be extracted if None)
+            episode_number: Episode number from payload (optional, will be extracted if None)
+        """
+        media_id, found_season, found_episode = self._find_tv_media_id(ids)
         if not media_id:
             logger.warning("No matching TMDB ID found for TV show")
             return
 
-        tvdb_id = app.providers.tmdb.tv_with_seasons(media_id, [season_number])[
-            "tvdb_id"
-        ]
+        # Use season/episode from parameters if provided, otherwise from lookup
+        season_number = season_number or found_season
+        episode_number = episode_number or found_episode
+
+        # If we still don't have season/episode, try to get from payload
+        if season_number is None or episode_number is None:
+            season_number, episode_number = self._extract_season_episode_from_payload(
+                payload
+            )
+
+        if season_number is None or episode_number is None:
+            logger.warning(
+                "Could not determine season/episode numbers for TMDB ID: %s", media_id
+            )
+            return
+
+        # Pull TMDB metadata; if the TMDB ID is actually episode-level, fall back to
+        # TVDB/IMDB to resolve the show ID instead of erroring and losing the scrobble.
+        tv_metadata = None
+        try:
+            tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "Failed tmdb.tv_with_seasons for TMDB ID %s (season %s): %s",
+                media_id,
+                season_number,
+                exc,
+            )
+
+            # If TMDB lookup failed, try resolving the show via TVDB/IMDB and retry.
+            if ids.get("tmdb_id") and (ids.get("tvdb_id") or ids.get("imdb_id")):
+                alt_ids = dict(ids)
+                alt_ids["tmdb_id"] = None
+                fallback_media_id, alt_season, alt_episode = self._find_tv_media_id(
+                    alt_ids
+                )
+
+                if fallback_media_id:
+                    media_id = fallback_media_id
+                    season_number = season_number or alt_season
+                    episode_number = episode_number or alt_episode
+                    try:
+                        tv_metadata = app.providers.tmdb.tv_with_seasons(
+                            media_id,
+                            [season_number],
+                        )
+                        logger.info(
+                            "Recovered TMDB lookup using TVDB/IMDB mapping: TMDB show %s",
+                            media_id,
+                        )
+                    except Exception as fallback_exc:  # pragma: no cover - defensive
+                        logger.warning(
+                            "Fallback tmdb.tv_with_seasons failed for show %s: %s",
+                            media_id,
+                            fallback_exc,
+                        )
+                        return
+                else:
+                    return
+            else:
+                return
+
+        tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
         if not tvdb_id:
             logger.warning("No TVDB ID found for TMDB ID: %s", media_id)
@@ -144,12 +221,24 @@ class BaseWebhookProcessor:
 
     def _find_tv_media_id(self, ids):
         """Find TV media ID from external IDs."""
+        # Check tmdb_id first - if provided, it's likely the show ID directly
+        if ids["tmdb_id"]:
+            try:
+                media_id = int(ids["tmdb_id"])
+                # Validate it's a valid TV show by checking if it exists
+                # We'll return None for season/episode to indicate they should come from payload
+                return media_id, None, None
+            except (ValueError, TypeError):
+                logger.debug("Invalid TMDB ID format: %s", ids["tmdb_id"])
+
+        # Fall back to IMDB/TVDB lookups
         for ext_id, ext_type in [
             (ids["imdb_id"], "imdb_id"),
             (ids["tvdb_id"], "tvdb_id"),
         ]:
             if ext_id:
                 response = app.providers.tmdb.find(ext_id, ext_type)
+                # Check for episode-level results first
                 if response.get("tv_episode_results"):
                     result = response["tv_episode_results"][0]
                     return (
@@ -157,6 +246,12 @@ class BaseWebhookProcessor:
                         result.get("season_number"),
                         result.get("episode_number"),
                     )
+                # Fall back to show-level results if episode-level not available
+                elif response.get("tv_results"):
+                    result = response["tv_results"][0]
+                    # Return show ID only, season/episode should come from payload
+                    return result.get("id"), None, None
+
         return None, None, None
 
     def _fetch_mapping_data(self):

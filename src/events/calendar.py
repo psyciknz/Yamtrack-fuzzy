@@ -3,11 +3,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import requests
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
-from app import media_type_config
+from app import config
 from app.models import Item, MediaTypes, Sources
 from app.providers import comicvine, services, tmdb
 from events.models import Event, SentinelDatetime
@@ -532,6 +533,20 @@ def process_season_episodes(item, metadata, events_bulk):
         logger.warning("%s - No episodes found in metadata", item)
         return
 
+    episode_numbers = [episode["episode_number"] for episode in metadata["episodes"]]
+    existing_episode_items = {
+        episode_item.episode_number: episode_item
+        for episode_item in Item.objects.filter(
+            media_id=item.media_id,
+            source=item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=item.season_number,
+            episode_number__in=episode_numbers,
+        )
+    }
+    items_to_update = []
+    new_items = []
+
     # Process each episode
     for episode in metadata["episodes"]:
         episode_number = episode["episode_number"]
@@ -552,6 +567,52 @@ def process_season_episodes(item, metadata, events_bulk):
             ),
         )
 
+        episode_item = existing_episode_items.get(episode_number)
+
+        image = settings.IMG_NONE
+        if episode.get("still_path"):
+            image = f"https://image.tmdb.org/t/p/original{episode['still_path']}"
+        elif episode.get("image"):
+            image = episode["image"]
+
+        if episode_item is None:
+            episode_item = Item(
+                media_id=item.media_id,
+                source=item.source,
+                media_type=MediaTypes.EPISODE.value,
+                title=item.title,
+                image=image,
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            existing_episode_items[episode_number] = episode_item
+            new_items.append(episode_item)
+
+        # Only store release datetimes that are meaningful (avoid sentinel minimums)
+        release_datetime = (
+            episode_datetime
+            if episode_datetime.year > 1900
+            else None
+        )
+
+        updated = False
+        if episode_item.image == settings.IMG_NONE and image != settings.IMG_NONE:
+            episode_item.image = image
+            updated = True
+
+        if episode_item.release_datetime != release_datetime:
+            episode_item.release_datetime = release_datetime
+            updated = True
+
+        if updated and episode_item not in new_items:
+            items_to_update.append(episode_item)
+
+    if new_items:
+        Item.objects.bulk_create(new_items, batch_size=100)
+
+    if items_to_update:
+        Item.objects.bulk_update(items_to_update, ["image", "release_datetime"], batch_size=100)
+
 
 def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
     """Determine the most accurate air datetime for an episode."""
@@ -566,7 +627,13 @@ def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
     # Fall back to TMDB data (date only)
     if episode["air_date"]:
         try:
-            return date_parser(episode["air_date"])
+            # Handle both string and datetime air dates
+            if hasattr(episode["air_date"], 'date'):
+                # It's already a datetime object
+                return episode["air_date"]
+            else:
+                # It's a string, parse it
+                return date_parser(episode["air_date"])
         except ValueError:
             logger.warning(
                 "Invalid air date for S%sE%s from TMDB: %s",
@@ -718,7 +785,7 @@ def process_other(item, events_bulk):
         )
         return
 
-    date_key = media_type_config.get_date_key(item.media_type)
+    date_key = config.get_date_key(item.media_type)
 
     if date_key in metadata["details"] and metadata["details"][date_key]:
         try:
@@ -751,21 +818,27 @@ def process_other(item, events_bulk):
         )
 
 
-def date_parser(date_str):
-    """Parse string in %Y-%m-%d to datetime. Raises ValueError if invalid."""
-    year_only_parts = 1
-    year_month_parts = 2
-    default_month_day = "-01-01"
-    default_day = "-01"
-    # Preprocess the date string
-    parts = date_str.split("-")
-    if len(parts) == year_only_parts:
-        date_str += default_month_day
-    elif len(parts) == year_month_parts:
-        # Year and month are provided, append "-01"
-        date_str += default_day
+def date_parser(date_value):
+    """Parse string/datetime to sentinel datetime. Raises ValueError if invalid."""
+    if isinstance(date_value, datetime):
+        dt = date_value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        date_str = str(date_value)
+        year_only_parts = 1
+        year_month_parts = 2
+        default_month_day = "-01-01"
+        default_day = "-01"
+        # Preprocess the date string
+        parts = date_str.split("-")
+        if len(parts) == year_only_parts:
+            date_str += default_month_day
+        elif len(parts) == year_month_parts:
+            # Year and month are provided, append "-01"
+            date_str += default_day
 
-    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
+        dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
     # Set to max time and add UTC timezone
     return dt.replace(
         hour=SentinelDatetime.HOUR,

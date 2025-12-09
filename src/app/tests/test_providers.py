@@ -182,7 +182,11 @@ class Metadata(TestCase):
         """Test the metadata method for TV shows."""
         response = tmdb.tv("1396")
         self.assertEqual(response["title"], "Breaking Bad")
-        self.assertEqual(response["details"]["first_air_date"], "2008-01-20")
+        # Check that first_air_date is now a datetime object
+        from django.utils import timezone
+        from datetime import datetime
+        expected_date = timezone.make_aware(datetime(2008, 1, 20), timezone.get_current_timezone())
+        self.assertEqual(response["details"]["first_air_date"], expected_date)
         self.assertEqual(response["details"]["status"], "Ended")
         self.assertEqual(response["details"]["episodes"], 62)
 
@@ -278,19 +282,25 @@ class Metadata(TestCase):
         # Check first episode
         self.assertEqual(result[0]["episode_number"], 1)
         self.assertEqual(result[0]["title"], "Pilot")
-        self.assertEqual(result[0]["air_date"], "2008-01-20")
+        # Check that air_date is now a datetime object
+        from django.utils import timezone
+        from datetime import datetime
+        expected_date = timezone.make_aware(datetime(2008, 1, 20), timezone.get_current_timezone())
+        self.assertEqual(result[0]["air_date"], expected_date)
         self.assertTrue(result[0]["history"], [episode_1])
 
         # Check second episode
         self.assertEqual(result[1]["episode_number"], 2)
         self.assertEqual(result[1]["title"], "Cat's in the Bag...")
-        self.assertEqual(result[1]["air_date"], "2008-01-27")
+        expected_date = timezone.make_aware(datetime(2008, 1, 27), timezone.get_current_timezone())
+        self.assertEqual(result[1]["air_date"], expected_date)
         self.assertTrue(result[1]["history"], [episode_2])
 
         # Check third episode (not watched)
         self.assertEqual(result[2]["episode_number"], 3)
         self.assertEqual(result[2]["title"], "...And the Bag's in the River")
-        self.assertEqual(result[2]["air_date"], "2008-02-10")
+        expected_date = timezone.make_aware(datetime(2008, 2, 10), timezone.get_current_timezone())
+        self.assertEqual(result[2]["air_date"], expected_date)
         self.assertFalse(result[2]["history"], [])
 
     @patch("app.providers.tmdb.tv_with_seasons")
@@ -362,7 +372,11 @@ class Metadata(TestCase):
         """Test the metadata method for movies."""
         response = tmdb.movie("10494")
         self.assertEqual(response["title"], "Perfect Blue")
-        self.assertEqual(response["details"]["release_date"], "1998-02-28")
+        # Check that release_date is now a datetime object
+        from django.utils import timezone
+        from datetime import datetime
+        expected_date = timezone.make_aware(datetime(1998, 2, 28), timezone.get_current_timezone())
+        self.assertEqual(response["details"]["release_date"], expected_date)
         self.assertEqual(response["details"]["status"], "Released")
 
     @patch("requests.Session.get")
@@ -1302,7 +1316,9 @@ class ServicesTests(TestCase):
         """Test the get_media_metadata function for TMDB episodes that don't exist."""
         # Setup mock to raise ProviderAPIError
         mock_response = type(
-            "Response", (), {"status_code": 404, "text": "Episode not found"},
+            "Response",
+            (),
+            {"status_code": 404, "text": "Episode not found"},
         )()
         mock_error = type("Error", (), {"response": mock_response})()
         mock_episode.side_effect = services.ProviderAPIError(
@@ -1325,7 +1341,6 @@ class ServicesTests(TestCase):
 
         # Verify the correct function was called
         mock_episode.assert_called_once_with("1396", 1, "3")
-
 
     @patch("app.providers.hardcover.book")
     def test_get_media_metadata_hardcover_book(self, mock_book):

@@ -3,12 +3,14 @@ import datetime
 import hashlib
 import json
 import logging
+import time
 from collections import defaultdict
 
 from cryptography.fernet import Fernet
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
+from django.db.utils import OperationalError
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from simple_history.utils import bulk_create_with_history
@@ -25,6 +27,41 @@ class MediaImportError(Exception):
 
 class MediaImportUnexpectedError(Exception):
     """Custom exception for unexpected import errors."""
+
+
+LOCK_ERROR_SIGNALS = (
+    "database is locked",
+    "database table is locked",
+    "database file is locked",
+)
+
+
+def is_lock_error(error):
+    """Return True if the OperationalError was caused by a SQLite lock."""
+    message = str(error).lower()
+    return any(signal in message for signal in LOCK_ERROR_SIGNALS)
+
+
+def retry_on_lock(func, max_retries=5, base_delay=0.1, backoff=2.0):
+    """Retry the callable when SQLite reports a lock."""
+    attempt = 0
+
+    while True:
+        try:
+            return func()
+        except OperationalError as error:
+            if not is_lock_error(error) or attempt >= max_retries:
+                raise
+
+            sleep_for = base_delay * (backoff**attempt)
+            logger.warning(
+                "Retrying database operation due to lock (attempt %s/%s, sleeping %.2fs)",
+                attempt + 1,
+                max_retries,
+                sleep_for,
+            )
+            time.sleep(sleep_for)
+            attempt += 1
 
 
 def get_existing_media(user):
@@ -85,11 +122,13 @@ def cleanup_existing_media(to_delete, user):
             if not media_ids:
                 continue
 
-            deleted_count, _ = model.objects.filter(
-                item__media_id__in=media_ids,
-                item__source=source,
-                user=user,
-            ).delete()
+            deleted_count, _ = retry_on_lock(
+                lambda: model.objects.filter(
+                    item__media_id__in=media_ids,
+                    item__source=source,
+                    user=user,
+                ).delete()
+            )
             total_deleted += deleted_count
 
         if total_deleted > 0:
@@ -182,11 +221,13 @@ def bulk_create_media(bulk_media_list, user):
             )
             update_episode_references(bulk_media, user)
 
-        bulk_create_with_history(
-            bulk_media,
-            model,
-            batch_size=500,
-            default_user=user,
+        retry_on_lock(
+            lambda: bulk_create_with_history(
+                bulk_media,
+                model,
+                batch_size=500,
+                default_user=user,
+            )
         )
 
 

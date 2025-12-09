@@ -9,7 +9,7 @@
 {% block content %}
   <h1 class="text-3xl font-bold mb-6">{{ media_type|media_type_readable_plural }}</h1>
 
-  <div x-data="{ sort: '{{ current_sort }}', status: '{{ current_status }}', layout: '{{ current_layout }}', search: '{{ request.GET.search|default:'' }}', statusLabels: {
+  <div x-data="{ sort: '{{ current_sort }}', direction: '{{ current_direction }}', status: '{{ current_status }}', layout: '{{ current_layout }}', search: '{{ request.GET.search|default:'' }}', statusLabels: {
     {% for value, label in status_choices %}
       '{{ value }}': '{{ label }}'
       {% if not forloop.last %},{% endif %}
@@ -21,11 +21,12 @@
       {% if not forloop.last %},{% endif %}
 
     {% endfor %}
-    } }">
+    }, defaultDirection(value) { return ['start_date', 'title', 'time_left'].includes(value) ? 'asc' : 'desc' }, toggleSort(value) { this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value); this.sort = value; } }">
 
     <!-- Form to manage state -->
     <form id="filter-form" class="hidden">
       <input type="hidden" name="sort" x-model="sort">
+      <input type="hidden" name="direction" x-model="direction">
       <input type="hidden" name="status" x-model="status">
       <input type="hidden" name="search" x-model="search">
       <input type="hidden" name="layout" x-model="layout">
@@ -33,7 +34,7 @@
 
     <div class="flex flex-col md:flex-row gap-4 mb-6">
       <!-- Search -->
-      <div class="relative flex-grow">
+      <div class="relative grow">
         <input placeholder="Search {{ media_type_plural }} in your list..."
                class="w-full py-2 pl-10 pr-4 bg-[#39404b] rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
                type="text"
@@ -43,56 +44,22 @@
                {% if media_list %} hx-target="{{ layout_class }}" {% else %} hx-target="#empty_list" {% endif %}
                hx-include="#filter-form"
                hx-indicator="#search-indicator">
-        <svg xmlns="http://www.w3.org/2000/svg"
-             width="24"
-             height="24"
-             viewBox="0 0 24 24"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2"
-             stroke-linecap="round"
-             stroke-linejoin="round"
-             class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-          <circle cx="11" cy="11" r="8"></circle>
-          <path d="m21 21-4.3-4.3"></path>
-        </svg>
+        {% include "app/icons/magnifying-glass.svg" with classes="w-6 h-6 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" %}
         <div id="search-indicator"
              class="htmx-indicator absolute right-3 top-1/2 transform -translate-y-1/2">
           <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
         </div>
       </div>
 
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex gap-2 flex-wrap filter-toolbar">
         <!-- Filter by Status -->
-        <div class="relative" x-data="{ open: false }">
+        <div class="relative filter-control" x-data="{ open: false }">
           <button class="flex items-center px-4 py-2 bg-[#39404b] rounded-md hover:bg-[#454d5a] transition-colors cursor-pointer"
                   @click="open = !open"
                   type="button">
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-4 h-4 mr-2">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-            </svg>
+            {% include "app/icons/funnel.svg" with classes="w-4 h-4 mr-2" %}
             <span x-text="statusLabels[status] || status"></span>
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-4 h-4 ml-2">
-              <path d="m6 9 6 6 6-6"></path>
-            </svg>
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-2" %}
           </button>
 
           <div class="absolute z-10 mt-2 py-1 w-48 bg-[#39404b] rounded-md shadow-lg overflow-hidden border border-gray-700"
@@ -119,25 +86,11 @@
         </div>
 
         <!-- Sort by -->
-        <div class="relative" x-data="{ open: false }">
+        <div class="relative filter-control" x-data="{ open: false }">
           <button class="flex items-center px-4 py-2 bg-[#39404b] rounded-md hover:bg-[#454d5a] transition-colors cursor-pointer"
                   @click="open = !open"
                   type="button">
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-4 h-4 mr-2">
-              <path d="m21 16-4 4-4-4"></path>
-              <path d="M17 20V4"></path>
-              <path d="m3 8 4-4 4 4"></path>
-              <path d="M7 4v16"></path>
-            </svg>
+            {% include "app/icons/arrows-up-down.svg" with classes="w-4 h-4 mr-2" %}
             <span x-text="sortLabels[sort] || sort"></span>
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -148,7 +101,19 @@
                  stroke-width="2"
                  stroke-linecap="round"
                  stroke-linejoin="round"
-                 class="w-4 h-4 ml-2">
+                 class="w-4 h-4 ml-2" x-show="direction === 'asc'">
+              <path d="m6 15 6-6 6 6"></path>
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="24"
+                 height="24"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 class="w-4 h-4 ml-2" x-show="direction !== 'asc'">
               <path d="m6 9 6 6 6-6"></path>
             </svg>
           </button>
@@ -165,59 +130,36 @@
                x-transition:leave-end="transform opacity-0 scale-95">
             {% for value, label in sort_choices %}
               {% if media_type != MediaTypes.MOVIE.value or value != 'progress' %}
-                <button hx-get="{% url 'medialist' media_type %}"
-                        {% if media_list %} hx-target="{{ layout_class }}" {% else %} hx-target="#empty_list" {% endif %}
-                        hx-include="#filter-form"
-                        hx-indicator="#loading-indicator"
-                        class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                        :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                        @click="sort = '{{ value }}'; open = false"
-                        type="button">{{ label }}</button>
+                {% if value != 'time_left' or media_type == MediaTypes.TV.value %}
+                  <button hx-get="{% url 'medialist' media_type %}"
+                          {% if media_list %} hx-target="{{ layout_class }}" {% else %} hx-target="#empty_list" {% endif %}
+                          hx-include="#filter-form"
+                          hx-indicator="#loading-indicator"
+                          class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                          :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                          @click="toggleSort('{{ value }}'); open = false"
+                          type="button">{{ label }}</button>
+                {% endif %}
               {% endif %}
             {% endfor %}
           </div>
         </div>
 
         <!-- Layout Toggle -->
-        <div class="flex rounded-md overflow-hidden border border-gray-700">
-          <a :href="`{% url 'medialist' media_type %}?${search ? 'search=' + search + '&' : ''}${status !== 'all' ? 'status=' + status + '&' : ''}${sort !== 'score' ? 'sort=' + sort + '&' : ''}layout=grid`"
+        <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
+          <a :href="`{% url 'medialist' media_type %}?${search ? 'search=' + search + '&' : ''}${status !== 'all' ? 'status=' + status + '&' : ''}${direction ? 'direction=' + direction + '&' : ''}${sort !== 'score' ? 'sort=' + sort + '&' : ''}layout=grid`"
              class="p-2 cursor-pointer"
              :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
              title="Grid View"
              @click="layout = 'grid'">
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-5 h-5">
-              <rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect>
-            </svg>
+            {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
           </a>
-          <a :href="`{% url 'medialist' media_type %}?${search ? 'search=' + search + '&' : ''}${status !== 'all' ? 'status=' + status + '&' : ''}${sort !== 'score' ? 'sort=' + sort + '&' : ''}layout=table`"
+          <a :href="`{% url 'medialist' media_type %}?${search ? 'search=' + search + '&' : ''}${status !== 'all' ? 'status=' + status + '&' : ''}${direction ? 'direction=' + direction + '&' : ''}${sort !== 'score' ? 'sort=' + sort + '&' : ''}layout=table`"
              class="p-2 cursor-pointer"
              :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
              title="Table View"
              @click="layout = 'table'">
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-5 h-5">
-              <path d="M12 3v18"></path>
-              <rect width="18" height="18" x="3" y="3" rx="2"></rect>
-              <path d="M3 9h18"></path>
-              <path d="M3 15h18"></path>
-            </svg>
+            {% include "app/icons/table.svg" with classes="w-5 h-5" %}
           </a>
         </div>
       </div>
@@ -228,19 +170,7 @@
            class="flex flex-col items-center justify-center py-16 bg-[#2a2f35] rounded-lg">
         <div class="text-center max-w-md mx-auto p-6">
           <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="24"
-                 height="24"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 class="w-8 h-8 text-gray-400">
-              <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"></path>
-            </svg>
+            {% include "app/icons/edit.svg" with classes="w-8 h-8 text-gray-400" %}
           </div>
           <h3 class="text-xl font-semibold mb-2">No {{ media_type|media_type_readable_plural }} Tracked Yet</h3>
           <p class="text-gray-400 mb-6">
@@ -256,22 +186,8 @@
       <div class="media-grid">{% include "app/components/media_grid_items.html" %}</div>
     {% else %}
       <div class="bg-[#2a2f35] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
-        <table class="w-full bg-[#2a2f35]">
-          <thead class="text-left text-gray-400 text-sm">
-            <tr>
-              <th class="p-2 w-15"></th>
-              <th class="p-2 pe-8 w-2/5">Title</th>
-              <th class="p-2 text-center">Score</th>
-              {% if media_type != MediaTypes.MOVIE.value %}<th class="p-2 text-center">Progress</th>{% endif %}
-              {% if media_type == MediaTypes.TV.value %}<th class="p-2 text-center">Last Watched</th>{% endif %}
-              <th class="p-2 text-center">Status</th>
-              <th class="p-2 text-center">Start Date</th>
-              <th class="p-2 text-center">End Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% include "app/components/media_table_items.html" %}
-          </tbody>
+        <table class="w-full bg-[#2a2f35] media-table">
+          {% include "app/components/media_table_items.html" %}
         </table>
       </div>
     {% endif %}
@@ -282,4 +198,113 @@
       </div>
     </div>
   </div>
+
+  <script>
+    let paginationDebugLog = [];
+    let activePaginationRequests = new Set();
+    let paginationInProgress = false;
+    
+    // Debug logging function
+    function logPaginationEvent(event, details) {
+      const timestamp = new Date().toISOString();
+      const logEntry = `[${timestamp}] ${event}: ${details}`;
+      paginationDebugLog.push(logEntry);
+      console.log(logEntry);
+      
+      // Keep only last 20 entries
+      if (paginationDebugLog.length > 20) {
+        paginationDebugLog.shift();
+      }
+    }
+    
+    // Prevent multiple pagination triggers from being active at once
+    document.body.addEventListener('htmx:beforeRequest', function(evt) {
+      if (evt.detail.elt.classList.contains('pagination-trigger')) {
+        const pageUrl = evt.detail.requestConfig.path;
+        const pageMatch = pageUrl.match(/page=(\d+)/);
+        const pageNumber = pageMatch ? pageMatch[1] : 'unknown';
+        
+        logPaginationEvent('PAGINATION_REQUEST_START', `Page ${pageNumber}, URL: ${pageUrl}`);
+        
+        // Check if any pagination is already in progress
+        if (paginationInProgress) {
+          logPaginationEvent('PAGINATION_REQUEST_BLOCKED', `Page ${pageNumber} blocked - pagination already in progress`);
+          evt.preventDefault();
+          return;
+        }
+        
+        // Check if this page is already being requested
+        if (activePaginationRequests.has(pageNumber)) {
+          logPaginationEvent('PAGINATION_REQUEST_BLOCKED', `Page ${pageNumber} already in progress`);
+          evt.preventDefault();
+          return;
+        }
+        
+        paginationInProgress = true;
+        activePaginationRequests.add(pageNumber);
+        
+        // Disable ALL pagination triggers immediately
+        const allTriggers = document.querySelectorAll('.pagination-trigger');
+        logPaginationEvent('PAGINATION_TRIGGERS_FOUND', `Found ${allTriggers.length} pagination triggers`);
+        
+        allTriggers.forEach(trigger => {
+          const triggerPageNumber = trigger.getAttribute('data-page') || 'unknown';
+          logPaginationEvent('PAGINATION_TRIGGER_DISABLED', `Page ${triggerPageNumber} trigger disabled`);
+          trigger.setAttribute('hx-trigger', 'none');
+        });
+      }
+    });
+
+    // Re-enable pagination triggers after request completes
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+      if (evt.detail.elt.classList.contains('pagination-trigger')) {
+        const pageUrl = evt.detail.requestConfig.path;
+        const pageMatch = pageUrl.match(/page=(\d+)/);
+        const pageNumber = pageMatch ? pageMatch[1] : 'unknown';
+        
+        logPaginationEvent('PAGINATION_REQUEST_COMPLETE', `Page ${pageNumber} completed`);
+        activePaginationRequests.delete(pageNumber);
+        
+        // Wait a bit before re-enabling to prevent rapid-fire requests
+        setTimeout(() => {
+          paginationInProgress = false;
+          
+          // Do not immediately re-enable all triggers; wait for next repaint, then re-enable only the last one
+          requestAnimationFrame(() => {
+            const allTriggers = document.querySelectorAll('.pagination-trigger');
+            if (allTriggers.length > 0) {
+              const lastTrigger = allTriggers[allTriggers.length - 1];
+              const triggerPageNumber = lastTrigger.getAttribute('data-page') || 'unknown';
+              logPaginationEvent('PAGINATION_TRIGGER_REENABLED', `Page ${triggerPageNumber} trigger re-enabled`);
+              lastTrigger.setAttribute('hx-trigger', 'revealed threshold:150px once');
+            }
+          });
+        }, 200); // 200ms delay to prevent rapid-fire requests
+      }
+    });
+    
+    // Log intersection observer events
+    document.body.addEventListener('htmx:beforeRequest', function(evt) {
+      if (evt.detail.elt.classList.contains('pagination-trigger')) {
+        logPaginationEvent('INTERSECTION_OBSERVER_TRIGGER', `Element: ${evt.detail.elt.tagName}, Classes: ${evt.detail.elt.className}`);
+      }
+    });
+    
+    // Add global debug function
+    window.debugPagination = function() {
+      console.log('=== PAGINATION DEBUG LOG ===');
+      paginationDebugLog.forEach(log => console.log(log));
+      console.log('=== ACTIVE REQUESTS ===');
+      console.log(Array.from(activePaginationRequests));
+      console.log('=== PAGINATION IN PROGRESS ===');
+      console.log(paginationInProgress);
+      console.log('=== PAGINATION TRIGGERS ===');
+      document.querySelectorAll('.pagination-trigger').forEach((trigger, index) => {
+        const url = trigger.getAttribute('hx-get') || 'no-url';
+        const triggerType = trigger.getAttribute('hx-trigger') || 'no-trigger';
+        const pageNumber = trigger.getAttribute('data-page') || 'unknown';
+        console.log(`Trigger ${index}: Page ${pageNumber}, URL: ${url}, Trigger: ${triggerType}`);
+      });
+    };
+  </script>
 {% endblock content %}

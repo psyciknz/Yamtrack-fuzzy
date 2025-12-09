@@ -1,6 +1,7 @@
 """Django settings for Yamtrack project."""
 
 import json
+import subprocess
 import warnings
 import zoneinfo
 from pathlib import Path
@@ -17,6 +18,7 @@ from decouple import (
     undefined,
 )
 from django.core.cache import CacheKeyWarning
+from django.db.backends.signals import connection_created
 
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
@@ -69,7 +71,7 @@ SECRET_KEY = config(
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = config("DEBUG", default=True, cast=bool)
 
 INTERNAL_IPS = ["127.0.0.1"]
 
@@ -202,12 +204,40 @@ if config("DB_HOST", default=None):
         DATABASES["default"]["OPTIONS"]["sslcertmode"] = sslcertmode
 
 else:
+    SQLITE_BUSY_TIMEOUT_SECONDS = config(
+        "SQLITE_BUSY_TIMEOUT_SECONDS",
+        default=30,
+        cast=int,
+    )
+    SQLITE_JOURNAL_MODE = config("SQLITE_JOURNAL_MODE", default="WAL")
+    SQLITE_SYNCHRONOUS = config("SQLITE_SYNCHRONOUS", default="NORMAL")
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db" / "db.sqlite3",
+            "OPTIONS": {
+                "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
+            },
         },
     }
+
+    def configure_sqlite_connection(sender, connection, **_kwargs):
+        """Ensure SQLite connections wait for locks and use WAL."""
+        if connection.vendor != "sqlite":
+            return
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
+            cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
+            cursor.execute(
+                f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
+            )
+        finally:
+            cursor.close()
+
+    connection_created.connect(configure_sqlite_connection)
 
 # Cache
 # https://docs.djangoproject.com/en/stable/topics/cache/
@@ -315,11 +345,71 @@ AUTH_USER_MODEL = "users.User"
 # For CSV imports
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
-VERSION = config("VERSION", default="dev")
+
+def _get_commit_hash():
+    """Return the current commit hash from env or the local git metadata."""
+    env_commit = (
+        config("COMMIT_SHA", default=None)
+        or config("GIT_COMMIT", default=None)
+        or config("GITHUB_SHA", default=None)
+    )
+
+    if env_commit and env_commit.lower() not in {"unknown", "none"}:
+        return env_commit.strip()
+
+    try:
+        git_rev = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=BASE_DIR,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+        if git_rev:
+            return git_rev
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    git_dir = BASE_DIR / ".git"
+    head_file = git_dir / "HEAD"
+    try:
+        head_contents = head_file.read_text().strip()
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        return None
+
+    if head_contents.startswith("gitdir:"):
+        _, git_dir_path = head_contents.split(":", 1)
+        git_dir = (BASE_DIR / git_dir_path.strip()).resolve()
+        head_file = git_dir / "HEAD"
+        try:
+            head_contents = head_file.read_text().strip()
+        except (FileNotFoundError, OSError, UnicodeDecodeError):
+            return None
+
+    if head_contents.startswith("ref:"):
+        _, ref_path = head_contents.split(" ", 1)
+        ref_file = git_dir / ref_path
+        try:
+            return ref_file.read_text().strip()
+        except (FileNotFoundError, OSError, UnicodeDecodeError):
+            return None
+
+    return head_contents or None
+
+
+VERSION_RAW = config("VERSION", default=None)
+COMMIT_SHA = _get_commit_hash()
+COMMIT_SHA_SHORT = COMMIT_SHA[:7] if COMMIT_SHA else None
+
+VERSION = VERSION_RAW or COMMIT_SHA_SHORT or "dev"
 
 ADMIN_ENABLED = config("ADMIN_ENABLED", default=False, cast=bool)
 
 TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
+
+# Runtime population settings
+RUNTIME_POPULATION_DISABLED = config("RUNTIME_POPULATION_DISABLED", default=False, cast=bool)
 
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
@@ -365,10 +455,20 @@ IGDB_SECRET = config(
 )
 IGDB_NSFW = config("IGDB_NSFW", default=False, cast=bool)
 
+# BoardGameGeek API Token - Register at https://boardgamegeek.com/using_the_xml_api
+BGG_API_TOKEN = config(
+    "BGG_API_TOKEN",
+    default=secret(
+        "BGG_API_TOKEN_FILE",
+        "",
+    ),
+)
+
 STEAM_API_KEY = config(
     "STEAM_API_KEY",
     default=secret(
-        "STEAM_API_KEY_FILE", "",
+        "STEAM_API_KEY_FILE",
+        "",
     ),  # Generate default key https://steamcommunity.com/dev/apikey
 )
 
@@ -585,3 +685,10 @@ if not REGISTRATION:
     ACCOUNT_ADAPTER = "users.account_adapter.NoNewUsersAccountAdapter"
 
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
+
+# Configure LoginRequiredMiddleware to exclude static files
+LOGIN_REQUIRED_EXEMPT = [
+    r'^/static/.*$',
+    r'^/favicon\.ico$',
+    r'^/health/.*$',
+]

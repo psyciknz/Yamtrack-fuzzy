@@ -10,6 +10,42 @@ document.addEventListener("alpine:init", () => {
       const endDateField = this.$el.querySelector('[name="end_date"]');
       const startDateField = this.$el.querySelector('[name="start_date"]');
 
+      // Disable HTML5 validation on the form to prevent browser from blocking submission
+      // We'll rely on Django backend validation instead
+      const form = this.$el.tagName === 'FORM' ? this.$el : this.$el.closest('form');
+      if (form) {
+        // Set novalidate attribute (Safari sometimes needs both the attribute and property)
+        form.setAttribute('novalidate', 'novalidate');
+        form.noValidate = true;
+        
+        // Also explicitly remove required from date fields for Safari compatibility
+        if (endDateField) {
+          endDateField.removeAttribute('required');
+          endDateField.required = false;
+        }
+        if (startDateField) {
+          startDateField.removeAttribute('required');
+          startDateField.required = false;
+        }
+        
+        // Safari-specific: Also handle form submission to prevent validation
+        form.addEventListener('submit', (e) => {
+          // Ensure novalidate is set right before submission
+          form.setAttribute('novalidate', 'novalidate');
+          form.noValidate = true;
+          
+          // Remove required from date fields one more time
+          if (endDateField) {
+            endDateField.removeAttribute('required');
+            endDateField.required = false;
+          }
+          if (startDateField) {
+            startDateField.removeAttribute('required');
+            startDateField.required = false;
+          }
+        }, { capture: true });
+      }
+
       // Get the current time in correct format based on input type
       const now = this.getCurrentDateTime(endDateField);
 
@@ -61,6 +97,7 @@ document.addEventListener("alpine:init", () => {
           }
         });
       }
+
     },
 
     getCurrentDateTime(field) {

@@ -3,7 +3,7 @@ import logging
 from django.apps import apps
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
@@ -25,6 +25,11 @@ def lists(request):
     search_query = request.GET.get("q", "")
     page = request.GET.get("page", 1)
     sort_by = request.user.update_preference("lists_sort", request.GET.get("sort"))
+    enabled_media_types = request.user.get_enabled_media_types()
+    selected_media_type = request.GET.get("media_type", "all")
+
+    if selected_media_type != "all" and selected_media_type not in enabled_media_types:
+        selected_media_type = "all"
 
     custom_lists = CustomList.objects.get_user_lists(request.user)
 
@@ -32,6 +37,16 @@ def lists(request):
         custom_lists = custom_lists.filter(
             Q(name__icontains=search_query) | Q(description__icontains=search_query),
         )
+
+    if selected_media_type != "all":
+        custom_lists = custom_lists.annotate(
+            has_media_type=Exists(
+                CustomListItem.objects.filter(
+                    custom_list_id=OuterRef("pk"),
+                    item__media_type=selected_media_type,
+                ),
+            ),
+        ).filter(has_media_type=True)
 
     if sort_by == "name":
         custom_lists = custom_lists.order_by("name")
@@ -84,6 +99,8 @@ def lists(request):
             "form": create_list_form,
             "current_sort": sort_by,
             "sort_choices": ListSortChoices.choices,
+            "media_types": enabled_media_types,
+            "current_media_type": selected_media_type,
         },
     )
 
@@ -127,48 +144,102 @@ def list_detail(request, list_id):
             F("episode_number").asc(nulls_first=True),
         ],
         "media_type": ["media_type"],
+        "rating": ["-customlistitem__date_added"],  # Will be overridden below for rating sort
     }
-    items = items.order_by(
-        *sort_mapping.get(params["sort_by"], ["-customlistitem__date_added"]),
-    )
+    
+    # Handle rating sort specially - need to get all items first to sort by rating
+    if params["sort_by"] == "rating":
+        # Get all items without pagination first
+        all_items = items.order_by(*sort_mapping.get(params["sort_by"], ["-customlistitem__date_added"]))
+        
+        # Get all media objects for rating sort
+        media_by_item_id = {}
+        media_types_in_all_items = {item.media_type for item in all_items}
+        media_manager = MediaManager()
 
-    # Paginate and prepare media objects
-    paginator = Paginator(items, 16)
-    items_page = paginator.get_page(params["page"])
+        for media_type in media_types_in_all_items:
+            model = apps.get_model("app", media_type)
 
-    media_by_item_id = {}
-    media_types_in_page = {item.media_type for item in items_page}
+            if media_type == MediaTypes.EPISODE.value:
+                filter_kwargs = {
+                    "item_id__in": [item.id for item in all_items],
+                    "related_season__user": request.user,
+                }
+            else:
+                filter_kwargs = {
+                    "item_id__in": [item.id for item in all_items],
+                    "user": request.user,
+                }
 
-    media_manager = MediaManager()
+            queryset = model.objects.filter(**filter_kwargs).select_related("item")
+            queryset = media_manager._apply_prefetch_related(queryset, media_type)
+            media_manager.annotate_max_progress(queryset, media_type)
 
-    for media_type in media_types_in_page:
-        model = apps.get_model("app", media_type)
+            # Map media objects by item_id
+            for entry in queryset:
+                media_by_item_id.setdefault(entry.item_id, entry)
 
-        if media_type == MediaTypes.EPISODE.value:
-            filter_kwargs = {
-                "item_id__in": [item.id for item in items_page],
-                "related_season__user": request.user,
-            }
-        else:
-            filter_kwargs = {
-                "item_id__in": [item.id for item in items_page],
-                "user": request.user,
-            }
+        # Annotate all items with media objects
+        for item in all_items:
+            item.media = media_by_item_id.get(item.id)
 
-        queryset = model.objects.filter(**filter_kwargs).select_related("item")
-        queryset = media_manager._apply_prefetch_related(queryset, media_type)
-        media_manager.annotate_max_progress(queryset, media_type)
+        # Sort all items by rating (score) in descending order,
+        # with unrated items at the end
+        all_items = sorted(
+            all_items,
+            key=lambda item: (
+                item.media.score if item.media and item.media.score is not None else -1
+            ),
+            reverse=True,
+        )
+        
+        # Now paginate the sorted items
+        paginator = Paginator(all_items, 16)
+        items_page = paginator.get_page(params["page"])
+    else:
+        # For non-rating sorts, apply database ordering and paginate normally
+        items = items.order_by(
+            *sort_mapping.get(params["sort_by"], ["-customlistitem__date_added"]),
+        )
+        
+        # Paginate and prepare media objects
+        paginator = Paginator(items, 16)
+        items_page = paginator.get_page(params["page"])
 
-        # Map media objects by item_id
-        for entry in queryset:
-            media_by_item_id.setdefault(entry.item_id, entry)
+        media_by_item_id = {}
+        media_types_in_page = {item.media_type for item in items_page}
 
-    # Annotate items with media objects
-    for item in items_page:
-        item.media = media_by_item_id.get(item.id)
+        media_manager = MediaManager()
+
+        for media_type in media_types_in_page:
+            model = apps.get_model("app", media_type)
+
+            if media_type == MediaTypes.EPISODE.value:
+                filter_kwargs = {
+                    "item_id__in": [item.id for item in items_page],
+                    "related_season__user": request.user,
+                }
+            else:
+                filter_kwargs = {
+                    "item_id__in": [item.id for item in items_page],
+                    "user": request.user,
+                }
+
+            queryset = model.objects.filter(**filter_kwargs).select_related("item")
+            queryset = media_manager._apply_prefetch_related(queryset, media_type)
+            media_manager.annotate_max_progress(queryset, media_type)
+
+            # Map media objects by item_id
+            for entry in queryset:
+                media_by_item_id.setdefault(entry.item_id, entry)
+
+        # Annotate items with media objects
+        for item in items_page:
+            item.media = media_by_item_id.get(item.id)
 
     # Base context for both full and partial responses
     context = {
+        "user": request.user,
         "custom_list": custom_list,
         "items": items_page,
         "has_next": items_page.has_next(),

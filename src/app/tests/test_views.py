@@ -3,11 +3,14 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from app import cache_utils
 from app.models import (
+    BasicMedia,
     TV,
     Anime,
     Episode,
@@ -19,7 +22,9 @@ from app.models import (
     Status,
 )
 from app.templatetags import app_tags
-from users.models import HomeSortChoices
+from app.views import _sort_tv_media_by_time_left
+from events.models import Event
+from users.models import HomeSortChoices, MediaStatusChoices
 
 
 class HomeViewTests(TestCase):
@@ -185,7 +190,6 @@ class HomeViewTests(TestCase):
             15,
         )  # 15 TV shows total
 
-
 class MediaListViewTests(TestCase):
     """Test the media list view."""
 
@@ -256,14 +260,271 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "score")
         self.assertEqual(response.context["current_layout"], "table")
 
-        # Check that only completed items are shown
-        self.assertEqual(response.context["media_list"].paginator.count, 2)
+        # Check that the media list is filtered
+        self.assertEqual(response.context["media_list"].paginator.count, 3)
 
         # Check that user preferences were updated
         self.user.refresh_from_db()
         self.assertEqual(self.user.movie_status, Status.COMPLETED.value)
         self.assertEqual(self.user.movie_sort, "score")
         self.assertEqual(self.user.movie_layout, "table")
+
+    def test_media_list_persists_direction(self):
+        """Sort direction should be remembered across requests."""
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+
+        first_response = self.client.get(f"{url}?sort=title&direction=asc")
+        self.assertEqual(first_response.context["current_direction"], "asc")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_sort, "title")
+        self.assertEqual(self.user.movie_direction, "asc")
+
+        second_response = self.client.get(url)
+        self.assertEqual(second_response.context["current_sort"], "title")
+        self.assertEqual(second_response.context["current_direction"], "asc")
+
+    @patch("app.views.services.get_media_metadata")
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_time_left_cache_invalidated_on_episode_watch(
+        self,
+        mock_models_metadata,
+        mock_views_metadata,
+    ):
+        """Ensure time-left cache is invalidated when an episode is watched."""
+
+        def fake_metadata(media_type, media_id, source, extra=None):
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "episodes": [
+                        {
+                            "episode_number": 1,
+                            "runtime": "45m",
+                            "image": "http://example.com/still.jpg",
+                        },
+                    ],
+                }
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "max_progress": 1,
+                    "title": "Secret Service",
+                    "related": {"seasons": []},
+                }
+            if media_type == "tv_with_seasons":
+                season_number = extra[0] if extra else 1
+                return {
+                    "title": "Secret Service",
+                    "related": {"seasons": [{"season_number": season_number}]},
+                    f"season/{season_number}": {
+                        "episodes": [
+                            {
+                                "episode_number": 1,
+                                "runtime": "45m",
+                                "image": "http://example.com/still.jpg",
+                            },
+                        ],
+                    },
+                }
+            return {}
+
+        mock_models_metadata.side_effect = fake_metadata
+        mock_views_metadata.side_effect = fake_metadata
+
+        tv_item = Item.objects.create(
+            media_id="secret-service",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Secret Service",
+            image="http://example.com/tv.jpg",
+            runtime_minutes=45,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="secret-service",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Secret Service",
+            image="http://example.com/season.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=timezone.now() - timezone.timedelta(days=1),
+        )
+
+        cache.clear()
+        url = reverse("medialist", args=[MediaTypes.TV.value])
+        response = self.client.get(f"{url}?sort=time_left")
+        self.assertEqual(response.status_code, 200)
+
+        page = response.context["media_list"]
+        self.assertGreater(page.paginator.count, 0)
+        first_media = page.object_list[0]
+        self.assertNotEqual(getattr(first_media, "time_left_display", None), "0m")
+
+        status_filter = response.context["current_status"]
+        direction = response.context["current_direction"]
+        cache_key = cache_utils.build_time_left_cache_key(
+            self.user.id,
+            MediaTypes.TV.value,
+            status_filter,
+            "",
+            direction,
+        )
+        self.assertIsNotNone(cache.get(cache_key))
+
+        season.watch(1, timezone.now())
+
+        self.assertIsNone(cache.get(cache_key))
+
+        response_after = self.client.get(f"{url}?sort=time_left")
+        self.assertEqual(response_after.status_code, 200)
+        page_after = response_after.context["media_list"]
+        updated_media = page_after.object_list[0]
+        self.assertEqual(getattr(updated_media, "time_left_display", None), "0m")
+
+    @patch("app.views.Item.fetch_releases")
+    def test_time_left_ignores_future_episode_release_dates(self, mock_fetch_releases):
+        """Ensure future-dated episodes are not counted in time left calculations."""
+        mock_fetch_releases.side_effect = AssertionError("fetch_releases should not be called")
+
+        now = timezone.now()
+        tv_item = Item.objects.create(
+            media_id="next-level-chef",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Next Level Chef",
+            image="http://example.com/tv.jpg",
+            runtime_minutes=42,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=1,
+        )
+
+        season_item = Item.objects.create(
+            media_id="next-level-chef",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Next Level Chef",
+            image="http://example.com/season.jpg",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        Item.objects.create(
+            media_id="next-level-chef",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Next Level Chef",
+            image="http://example.com/tv.jpg",
+            season_number=1,
+            episode_number=1,
+            release_datetime=now - timezone.timedelta(days=1),
+        )
+        Item.objects.create(
+            media_id="next-level-chef",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Next Level Chef",
+            image="http://example.com/tv.jpg",
+            season_number=1,
+            episode_number=2,
+            release_datetime=now + timezone.timedelta(days=7),
+        )
+
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=now - timezone.timedelta(days=1),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=2,
+            datetime=now + timezone.timedelta(days=7),
+        )
+
+        BasicMedia.objects.annotate_max_progress([tv], MediaTypes.TV.value)
+        sorted_media = _sort_tv_media_by_time_left([tv])
+        self.assertEqual(sorted_media[0].max_progress, 1)
+        self.assertEqual(sorted_media[0].episodes_left_display, 0)
+
+    @patch("app.views.Item.fetch_releases")
+    def test_time_left_counts_episode_released_today(self, mock_fetch_releases):
+        """Episodes released today should be considered available."""
+        mock_fetch_releases.side_effect = AssertionError("fetch_releases should not be called")
+
+        now = timezone.now()
+        tv_item = Item.objects.create(
+            media_id="cooking-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Cooking Show",
+            image="http://example.com/tv.jpg",
+            runtime_minutes=42,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+
+        season_item = Item.objects.create(
+            media_id="cooking-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Cooking Show",
+            image="http://example.com/season.jpg",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        Item.objects.create(
+            media_id="cooking-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Cooking Show",
+            image="http://example.com/tv.jpg",
+            season_number=1,
+            episode_number=1,
+            release_datetime=now,
+        )
+
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=now,
+        )
+
+        BasicMedia.objects.annotate_max_progress([tv], MediaTypes.TV.value)
+        sorted_media = _sort_tv_media_by_time_left([tv])
+        self.assertEqual(sorted_media[0].max_progress, 1)
+        self.assertEqual(sorted_media[0].episodes_left_display, 1)
 
     def test_media_list_htmx_request(self):
         """Test the media list view with HTMX request."""
@@ -326,7 +587,12 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(self.user.last_search_type, MediaTypes.MOVIE.value)
 
         # Verify the search function was called with correct parameters
-        mock_search.assert_called_once_with(MediaTypes.MOVIE.value, "test", 1, None)
+        mock_search.assert_called_once_with(
+            MediaTypes.MOVIE.value,
+            "test",
+            1,
+            Sources.TMDB.value,
+        )
 
 
 class MediaDetailsViewTests(TestCase):
@@ -682,7 +948,7 @@ class StatisticsViewTests(TestCase):
         self.assertIn("score_distribution", response.context)
         self.assertIn("status_distribution", response.context)
         self.assertIn("status_pie_chart_data", response.context)
-        self.assertIn("timeline", response.context)
+        self.assertNotIn("timeline", response.context)
 
     def test_statistics_view_custom_date_range(self):
         """Test the statistics view with custom date range."""
@@ -705,7 +971,7 @@ class StatisticsViewTests(TestCase):
         self.assertIn("score_distribution", response.context)
         self.assertIn("status_distribution", response.context)
         self.assertIn("status_pie_chart_data", response.context)
-        self.assertIn("timeline", response.context)
+        self.assertNotIn("timeline", response.context)
 
     def test_statistics_view_invalid_date_format(self):
         """Test the statistics view with invalid date format."""

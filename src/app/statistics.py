@@ -3,7 +3,7 @@ import datetime
 import heapq
 import itertools
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from dateutil.relativedelta import relativedelta
 from django.apps import apps
@@ -14,7 +14,7 @@ from django.db.models import (
 )
 from django.utils import timezone
 
-from app import media_type_config
+from app import config, providers
 from app.models import TV, BasicMedia, Episode, MediaManager, MediaTypes, Season, Status
 from app.templatetags import app_tags
 
@@ -53,10 +53,15 @@ def get_user_media(user, start_date, end_date):
                 "related_season__related_tv",
                 flat=True,
             ).distinct()
-            queryset = TV.objects.filter(id__in=tv_ids).prefetch_related(
+            queryset = TV.objects.filter(
+                id__in=tv_ids,
+                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value]
+            ).prefetch_related(
                 Prefetch(
                     "seasons",
-                    queryset=Season.objects.select_related(
+                    queryset=Season.objects.filter(
+                        status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value]
+                    ).select_related(
                         "item",
                     ).prefetch_related(
                         Prefetch(
@@ -75,15 +80,22 @@ def get_user_media(user, start_date, end_date):
             ).distinct()
             queryset = Season.objects.filter(
                 id__in=season_ids,
+                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value]
             ).prefetch_related(
                 Prefetch("episodes", queryset=base_episodes),
             )
         # For other models, apply date filtering conditionally
         elif start_date is None and end_date is None:
             # No date filtering for "All Time"
-            queryset = model.objects.filter(user=user)
+            queryset = model.objects.filter(
+                user=user,
+                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value]
+            )
         else:
-            queryset = model.objects.filter(user=user).filter(
+            queryset = model.objects.filter(
+                user=user,
+                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value]
+            ).filter(
                 # Case 1: Media has both start_date and end_date
                 # Include if ranges overlap
                 # (exclude if media ends before filter start or starts after filter end)
@@ -148,7 +160,7 @@ def get_media_type_distribution(media_count):
             chart_data["labels"].append(label)
             chart_data["datasets"][0]["data"].append(count)
             chart_data["datasets"][0]["backgroundColor"].append(
-                media_type_config.get_stats_color(media_type),
+                config.get_stats_color(media_type),
             )
     return chart_data
 
@@ -267,7 +279,7 @@ def get_score_distribution(user_media):
             {
                 "label": app_tags.media_type_readable(media_type),
                 "data": [distribution[media_type][score] for score in score_range],
-                "background_color": media_type_config.get_stats_color(media_type),
+                "background_color": config.get_stats_color(media_type),
             }
             for media_type in distribution
         ],
@@ -312,24 +324,10 @@ def _annotate_top_rated_media(top_rated_media):
 
 def get_status_color(status):
     """Get the color for the status of the media."""
-    colors = {
-        Status.IN_PROGRESS.value: media_type_config.get_stats_color(
-            MediaTypes.EPISODE.value,
-        ),
-        Status.COMPLETED.value: media_type_config.get_stats_color(
-            MediaTypes.TV.value,
-        ),
-        Status.PLANNING.value: media_type_config.get_stats_color(
-            MediaTypes.ANIME.value,
-        ),
-        Status.PAUSED.value: media_type_config.get_stats_color(
-            MediaTypes.MOVIE.value,
-        ),
-        Status.DROPPED.value: media_type_config.get_stats_color(
-            MediaTypes.MANGA.value,
-        ),
-    }
-    return colors.get(status, "rgba(201, 203, 207)")
+    try:
+        return config.get_status_stats_color(status)
+    except KeyError:
+        return "rgba(201, 203, 207)"
 
 
 def get_timeline(user_media):
@@ -338,11 +336,63 @@ def get_timeline(user_media):
 
     # Process each media type
     for media_type, queryset in user_media.items():
+        # If we have TV objects but seasons are hidden from the sidebar,
+        # the TV queryset will still include prefetched seasons. Add
+        # seasons from TV objects to the timeline so they appear here.
         if media_type == MediaTypes.TV.value:
+            for tv in queryset:
+                seasons_qs = getattr(tv, "seasons", None)
+                if seasons_qs is None:
+                    continue
+                for media in seasons_qs.all():
+                    # media here is a Season instance
+                    local_start_date = (
+                        timezone.localdate(media.start_date) if media.start_date else None
+                    )
+                    local_end_date = (
+                        timezone.localdate(media.end_date) if media.end_date else None
+                    )
+
+                    if media.start_date and media.end_date:
+                        # add media to all months between start and end
+                        current_date = local_start_date
+                        while current_date <= local_end_date:
+                            year = current_date.year
+                            month = current_date.month
+                            month_name = calendar.month_name[month]
+                            month_year = f"{month_name} {year}"
+
+                            timeline[month_year].append(media)
+
+                            # Move to next month
+                            current_date += relativedelta(months=1)
+                            current_date = current_date.replace(day=1)
+                    elif media.start_date:
+                        # If only start date, add to the start month
+                        year = local_start_date.year
+                        month = local_start_date.month
+                        month_name = calendar.month_name[month]
+                        month_year = f"{month_name} {year}"
+
+                        timeline[month_year].append(media)
+                    elif media.end_date:
+                        # If only end date, add to the end month
+                        year = local_end_date.year
+                        month = local_end_date.month
+                        month_name = calendar.month_name[month]
+                        month_year = f"{month_name} {year}"
+
+                        timeline[month_year].append(media)
+            # don't process TV objects themselves any further
             continue
+
         for media in queryset:
-            local_start_date = timezone.localdate(media.start_date)
-            local_end_date = timezone.localdate(media.end_date)
+            local_start_date = (
+                timezone.localdate(media.start_date) if media.start_date else None
+            )
+            local_end_date = (
+                timezone.localdate(media.end_date) if media.end_date else None
+            )
 
             if media.start_date and media.end_date:
                 # add media to all months between start and end
@@ -608,3 +658,1004 @@ def calculate_streaks(date_counts, end_date):
     longest_streak = max(longest_streak, streak_count)
 
     return current_streak, longest_streak
+
+
+def parse_runtime_to_minutes(runtime_str):
+    """Parse runtime string (e.g., '45m', '1h 30m', '2h', '12 min') to total minutes."""
+    if not runtime_str:
+        return None
+    
+    # Handle case where runtime_str is already an integer (minutes)
+    if isinstance(runtime_str, int):
+        return runtime_str
+    
+    # Convert to string if it's not already
+    if not isinstance(runtime_str, str):
+        runtime_str = str(runtime_str)
+    
+    try:
+        # Handle MAL format: "12 min" (note the space before "min")
+        if "h" in runtime_str and "min" in runtime_str:
+            # Format like "1h 30min" or "2h 15min"
+            parts = runtime_str.split()
+            if len(parts) == 2:  # "1h 30min"
+                hours = int(parts[0].replace("h", ""))
+                minutes = int(parts[1].replace("min", ""))
+                return hours * 60 + minutes
+            else:
+                return None
+        elif "h" in runtime_str and "m" in runtime_str:
+            # Format like "1h 30m" or "2h 15m" (TMDB format)
+            parts = runtime_str.split()
+            if len(parts) == 2:  # "1h 30m"
+                hours = int(parts[0].replace("h", ""))
+                minutes = int(parts[1].replace("m", ""))
+                return hours * 60 + minutes
+            else:
+                return None
+        elif "h" in runtime_str:
+            # Format like "2h"
+            hours = int(runtime_str.replace("h", ""))
+            return hours * 60
+        elif "min" in runtime_str:
+            # Format like "45min" or "12 min" (MAL format)
+            minutes = int(runtime_str.replace("min", "").replace(" ", ""))
+            return minutes
+        elif "m" in runtime_str:
+            # Format like "45m" (TMDB format)
+            minutes = int(runtime_str.replace("m", ""))
+            return minutes
+        else:
+            return None
+    except (ValueError, AttributeError):
+        return None
+
+
+def _is_media_in_date_range(media, start_date, end_date):
+    """Check if media is within the specified date range."""
+    if not start_date or not end_date:
+        return True
+    
+    if hasattr(media, 'end_date') and media.end_date:
+        return start_date <= media.end_date <= end_date
+    elif hasattr(media, 'start_date') and media.start_date:
+        return start_date <= media.start_date <= end_date
+    
+    return False
+
+
+
+
+
+
+
+
+def _format_hours_minutes(total_minutes):
+    """Format total minutes into hours and minutes string."""
+    if total_minutes > 0:
+        hours = total_minutes // 60
+        remaining_minutes = total_minutes % 60
+        
+        # Always show both hours and minutes for consistency
+        return f"{hours}h {remaining_minutes}min"
+    else:
+        return "0h 0min"
+
+
+def _get_activity_datetime(media):
+    """Return the most representative datetime for media activity."""
+    for attr in ("end_date", "start_date", "created_at"):
+        value = getattr(media, attr, None)
+        if value:
+            return value
+    return None
+
+
+def calculate_minutes_per_media_type(user_media, start_date, end_date):
+    """Return total minutes watched per media type within the date range."""
+    minutes_per_type = {}
+
+    for media_type, media_list in user_media.items():
+        total_minutes = 0
+
+        for media_data in media_list:
+            media = getattr(media_data, "media", media_data)
+
+            if media_type == MediaTypes.TV.value:
+                tv_minutes, _ = _calculate_tv_time(media, start_date, end_date, logger)
+                total_minutes += tv_minutes
+                continue
+
+            if media_type == MediaTypes.ANIME.value:
+                anime_minutes, _ = _calculate_anime_time(media, start_date, end_date, logger)
+                total_minutes += anime_minutes
+                continue
+
+            if media_type == MediaTypes.MOVIE.value:
+                activity_dt = _get_activity_datetime(media)
+                if start_date and end_date:
+                    if not activity_dt or activity_dt < start_date or activity_dt > end_date:
+                        continue
+                total_minutes += _calculate_movie_time(
+                    media,
+                    start_date,
+                    end_date,
+                    media_type,
+                    logger,
+                )
+                continue
+
+            if media_type == MediaTypes.GAME.value:
+                if (
+                    media.end_date
+                    and start_date
+                    and end_date
+                    and start_date <= media.end_date <= end_date
+                ):
+                    total_minutes += media.progress
+                elif not start_date and not end_date:
+                    total_minutes += media.progress
+                continue
+
+            if media_type == MediaTypes.BOARDGAME.value:
+                if (
+                    media.end_date
+                    and start_date
+                    and end_date
+                    and start_date <= media.end_date <= end_date
+                ):
+                    total_minutes += media.progress
+                elif (
+                    media.start_date
+                    and start_date
+                    and end_date
+                    and start_date <= media.start_date <= end_date
+                ):
+                    total_minutes += media.progress
+                elif not start_date and not end_date:
+                    total_minutes += media.progress
+                continue
+
+            if not _is_media_in_date_range(media, start_date, end_date):
+                continue
+
+            total_minutes += 60
+
+        minutes_per_type[media_type] = total_minutes
+
+    return minutes_per_type
+
+
+def get_hours_per_media_type(user_media, start_date, end_date, minutes_per_type=None):
+    """Calculate total hours watched per media type within the date range."""
+    if minutes_per_type is None:
+        minutes_per_type = calculate_minutes_per_media_type(user_media, start_date, end_date)
+    hours = {}
+    for media_type, total_minutes in minutes_per_type.items():
+        if media_type == MediaTypes.BOARDGAME.value:
+            hours[media_type] = f"{total_minutes} play{'s' if total_minutes != 1 else ''}"
+        else:
+            hours[media_type] = _format_hours_minutes(total_minutes)
+    return hours
+
+
+
+
+
+def _get_season_metadata(media, season, season_metadata_cache, logger):
+    """Get season metadata, using cache if available."""
+    if season.item.season_number not in season_metadata_cache:
+        try:
+            season_metadata = providers.services.get_media_metadata(
+                "season",
+                media.item.media_id,
+                media.item.source,
+                [season.item.season_number]  # Note: season_numbers is a list
+            )
+            season_metadata_cache[season.item.season_number] = season_metadata
+        except Exception as e:
+            logger.warning(f"Failed to get season {season.item.season_number} metadata for {media.item.title}: {e}")
+            season_metadata_cache[season.item.season_number] = None
+    
+    return season_metadata_cache[season.item.season_number]
+
+
+def _get_season_metadata_with_episodes(media, season, logger):
+    """Get season metadata with processed episodes that include runtime data."""
+    try:
+        # Get season metadata from provider
+        season_metadata = providers.services.get_media_metadata(
+            "season",
+            media.item.media_id,
+            media.item.source,
+            [season.item.season_number]
+        )
+        
+        if not season_metadata:
+            logger.error(f"No season metadata available for {media.item.title} S{season.item.season_number}")
+            return None
+        
+        # Get episodes from database for this season
+        episodes_in_db = season.episodes.all()
+        
+        # Process episodes through TMDB to get runtime data
+        from app.providers import tmdb
+        season_metadata["episodes"] = tmdb.process_episodes(
+            season_metadata,
+            episodes_in_db,
+        )
+        
+        return season_metadata
+        
+    except Exception as e:
+        logger.error(f"Failed to get season metadata with episodes for {media.item.title} S{season.item.season_number}: {e}")
+        return None
+
+
+def _calculate_episode_time_from_data(episode_data, logger):
+    """Calculate episode time from processed episode data."""
+    if 'runtime' not in episode_data or not episode_data['runtime']:
+        raise ValueError(f"Runtime data missing for episode {episode_data.get('episode_number', 'unknown')}")
+    
+    runtime_str = episode_data['runtime']
+    episode_minutes = parse_runtime_to_minutes(runtime_str)
+    
+    if episode_minutes is None:
+        raise ValueError(f"Failed to parse runtime '{runtime_str}' for episode {episode_data.get('episode_number', 'unknown')}")
+    
+    return episode_minutes
+
+
+def _calculate_episode_time_from_cache(episode, logger):
+    """Calculate episode time from cached runtime data."""
+    if not hasattr(episode, 'item') or not episode.item.runtime_minutes:
+        logger.warning(f"Runtime data missing for episode {episode.item.episode_number if episode.item else 'unknown'}, skipping")
+        return 0  # Skip this episode instead of failing
+    
+    return episode.item.runtime_minutes
+
+
+def _is_episode_in_range(episode, start_date, end_date):
+    """Check if episode is within the specified date range."""
+    if episode.end_date and start_date and end_date:
+        return start_date <= episode.end_date <= end_date
+    elif not start_date and not end_date:
+        # All time - include all episodes
+        return True
+    return False
+
+
+
+
+def _calculate_tv_time(media, start_date, end_date, logger):
+    """Calculate total time for TV shows using cached runtime data."""
+    total_time_minutes = 0
+    episode_count = 0
+    
+    if not hasattr(media, 'seasons'):
+        return total_time_minutes, episode_count
+    
+    for season in media.seasons.all():
+        if not hasattr(season, 'episodes'):
+            continue
+            
+        for episode in season.episodes.all():
+            # Check if episode is within date range
+            if not _is_episode_in_range(episode, start_date, end_date):
+                continue
+                
+            try:
+                episode_count += 1
+                total_time_minutes += _calculate_episode_time_from_cache(episode, logger)
+            except ValueError as e:
+                logger.warning(f"Skipping episode due to missing runtime: {e}")
+                # Continue processing other episodes instead of failing completely
+                continue
+    
+    return total_time_minutes, episode_count
+
+
+def _calculate_anime_time(media, start_date, end_date, logger):
+    """Calculate total time for anime using cached runtime data."""
+    total_time_minutes = 0
+    episode_count = 0
+    
+    # Check if anime is within date range
+    if media.end_date and start_date and end_date:
+        if start_date <= media.end_date <= end_date:
+            episode_count = media.progress
+            total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(date range)")
+    elif not start_date and not end_date:
+        # All time
+        episode_count = media.progress
+        total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(all time)")
+    
+    return total_time_minutes, episode_count
+
+
+
+
+def _get_anime_runtime_from_cache(media, episode_count, logger, context=""):
+    """Get anime runtime in minutes from cached runtime data."""
+    if not hasattr(media, 'item') or not media.item:
+        logger.warning(f"Runtime data missing for anime (no item) {context}, skipping")
+        return 0  # Skip this anime instead of failing
+        
+    if not media.item.runtime_minutes:
+        logger.warning(f"Runtime data missing for anime '{media.item.title}' {context}, skipping")
+        return 0  # Skip this anime instead of failing
+    
+    logger.info(f"Anime '{media.item.title}' {context}: using cached runtime {media.item.runtime_minutes} minutes per episode")
+    return episode_count * media.item.runtime_minutes
+
+
+def _get_media_runtime_from_cache(media, logger, context=""):
+    """Get media runtime in minutes from cached runtime data."""
+    if not hasattr(media, 'item') or not media.item:
+        logger.warning(f"Runtime data missing for media (no item) {context}, skipping")
+        return 0  # Skip this media instead of failing
+
+    runtime_minutes = getattr(media.item, "runtime_minutes", None)
+    if runtime_minutes and runtime_minutes < 999999:
+        logger.info(
+            f"Media '{media.item.title}' {context}: using cached runtime {runtime_minutes} minutes"
+        )
+        return runtime_minutes
+
+    metadata_runtime = None
+    try:
+        metadata = _get_media_metadata_for_statistics(media)
+    except ValueError as exc:  # pragma: no cover - rely on logging for visibility
+        logger.warning(str(exc))
+        metadata = None
+
+    if metadata:
+        candidates = [
+            metadata.get("runtime_minutes"),
+            metadata.get("runtime"),
+        ]
+        details = metadata.get("details") if isinstance(metadata, dict) else None
+        if isinstance(details, dict):
+            candidates.append(details.get("runtime"))
+
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            if isinstance(candidate, (int, float)):
+                if candidate > 0:
+                    metadata_runtime = int(candidate)
+                    break
+            else:
+                parsed = parse_runtime_to_minutes(candidate)
+                if parsed:
+                    metadata_runtime = parsed
+                    break
+
+    if metadata_runtime and metadata_runtime < 999999:
+        logger.info(
+            f"Media '{media.item.title}' {context}: fetched runtime {metadata_runtime} minutes"
+        )
+        if hasattr(media.item, "runtime_minutes"):
+            media.item.runtime_minutes = metadata_runtime
+            media.item.save(update_fields=["runtime_minutes"])
+        return metadata_runtime
+
+    logger.warning(
+        f"Runtime data missing for media '{getattr(media.item, 'title', 'unknown')}' {context}, skipping"
+    )
+    return 0  # Skip this media instead of failing
+
+
+def _get_media_metadata_for_statistics(media):
+    """Get media metadata for statistics calculations."""
+    # Use the same approach as media details page to get metadata
+    try:
+        normalized_type = media.item.media_type.lower()
+        return providers.services.get_media_metadata(
+            normalized_type,
+            media.item.media_id,
+            media.item.source,
+        )
+    except Exception as e:
+        raise ValueError(f"Failed to get metadata for {media.item.title}: {e}")
+
+
+def _calculate_movie_time(media, start_date, end_date, normalized_type, logger):
+    """Calculate total time for movies and other media types using cached runtime data."""
+    total_time_minutes = 0
+    
+    # Check if media is within date range
+    if media.end_date and start_date and end_date:
+        if start_date <= media.end_date <= end_date:
+            total_time_minutes = _get_media_runtime_from_cache(media, logger, "(date range)")
+    elif not start_date and not end_date:
+        # All time
+        total_time_minutes = _get_media_runtime_from_cache(media, logger, "(all time)")
+    
+    return total_time_minutes
+
+
+def _localize_datetime(value):
+    """Return the datetime converted to the current timezone if aware."""
+    if value is None:
+        return None
+
+    if timezone.is_naive(value):
+        return value
+    return timezone.localtime(value)
+
+
+def _compute_metric_breakdown(total_value, datetimes, start_date, end_date):
+    """Return aggregate totals alongside per-year/month/day rates."""
+    breakdown = {
+        "total": total_value,
+        "per_year": 0,
+        "per_month": 0,
+        "per_day": 0,
+    }
+
+    if total_value == 0 or not datetimes:
+        return breakdown
+
+    range_start = start_date or min(datetimes)
+    range_end = end_date or max(datetimes)
+
+    if range_start > range_end:
+        range_start, range_end = range_end, range_start
+
+    range_start = _localize_datetime(range_start)
+    range_end = _localize_datetime(range_end)
+
+    start_date_only = range_start.date()
+    end_date_only = range_end.date()
+
+    total_days = (end_date_only - start_date_only).days + 1
+    if total_days <= 0:
+        total_days = 1
+
+    total_years = total_days / 365.25
+    total_months = total_days / 30.4375
+
+    breakdown["per_year"] = total_value / total_years if total_years else total_value
+    breakdown["per_month"] = total_value / total_months if total_months else total_value
+    breakdown["per_day"] = total_value / total_days if total_days else total_value
+
+    return breakdown
+
+
+def _build_single_series_chart(labels, values, color, dataset_label):
+    """Return a Chart.js-friendly dataset for a single-series bar chart."""
+    if not values or sum(values) == 0:
+        return {"labels": [], "datasets": []}
+
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": dataset_label,
+                "data": values,
+                "background_color": color,
+            },
+        ],
+    }
+
+
+def _format_hour_label(hour):
+    """Return a human-friendly label for an hour of day."""
+    if hour == 0:
+        return "12am"
+    if hour < 12:
+        return f"{hour}am"
+    if hour == 12:
+        return "12pm"
+    return f"{hour - 12}pm"
+
+
+def _build_media_charts(datetimes, color, dataset_label):
+    """Build grouped chart datasets for the provided datetimes."""
+    empty_chart = {"labels": [], "datasets": []}
+
+    if not datetimes:
+        return {
+            "by_year": empty_chart,
+            "by_month": empty_chart,
+            "by_weekday": empty_chart,
+            "by_time_of_day": empty_chart,
+        }
+
+    year_counts = Counter(dt.year for dt in datetimes)
+    sorted_years = sorted(year_counts)
+    year_labels = [str(year) for year in sorted_years]
+    year_values = [year_counts[year] for year in sorted_years]
+
+    month_counts = Counter(dt.month for dt in datetimes)
+    month_labels = [calendar.month_abbr[i] for i in range(1, 13)]
+    month_values = [month_counts.get(i, 0) for i in range(1, 13)]
+
+    weekday_map = {
+        0: "Mon",
+        1: "Tue",
+        2: "Wed",
+        3: "Thu",
+        4: "Fri",
+        5: "Sat",
+        6: "Sun",
+    }
+    weekday_order = [6, 0, 1, 2, 3, 4, 5]
+    weekday_counts = Counter(dt.weekday() for dt in datetimes)
+    weekday_labels = [weekday_map[index] for index in weekday_order]
+    weekday_values = [weekday_counts.get(index, 0) for index in weekday_order]
+
+    hour_counts = Counter(dt.hour for dt in datetimes)
+    hour_labels = [_format_hour_label(hour) for hour in range(24)]
+    hour_values = [hour_counts.get(hour, 0) for hour in range(24)]
+
+    return {
+        "by_year": _build_single_series_chart(
+            year_labels,
+            year_values,
+            color,
+            dataset_label,
+        ),
+        "by_month": _build_single_series_chart(
+            month_labels,
+            month_values,
+            color,
+            dataset_label,
+        ),
+        "by_weekday": _build_single_series_chart(
+            weekday_labels,
+            weekday_values,
+            color,
+            dataset_label,
+        ),
+        "by_time_of_day": _build_single_series_chart(
+            hour_labels,
+            hour_values,
+            color,
+            dataset_label,
+        ),
+    }
+
+
+def _collect_episode_datetimes(tv_queryset, start_date, end_date):
+    """Return localized episode completion datetimes for the queryset."""
+    datetimes = []
+
+    if tv_queryset is None:
+        return datetimes
+
+    for tv in tv_queryset:
+        seasons = getattr(tv, "seasons", None)
+        if seasons is None:
+            continue
+
+        for season in seasons.all():
+            episodes = getattr(season, "episodes", None)
+            if episodes is None:
+                continue
+
+            for episode in episodes.all():
+                if not episode.end_date:
+                    continue
+                if not _is_episode_in_range(episode, start_date, end_date):
+                    continue
+                localized_date = _localize_datetime(episode.end_date)
+                datetimes.append(localized_date)
+
+    return datetimes
+
+
+def _collect_movie_datetimes(movie_queryset, start_date, end_date):
+    """Return localized movie completion datetimes for the queryset."""
+    datetimes = []
+
+    if movie_queryset is None:
+        return datetimes
+
+    for movie in movie_queryset:
+        activity_date = _get_activity_datetime(movie)
+        if activity_date is None:
+            continue
+
+        if start_date and end_date:
+            if not (start_date <= activity_date <= end_date):
+                continue
+
+        datetimes.append(_localize_datetime(activity_date))
+
+    return datetimes
+
+
+def get_tv_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
+    """Return aggregate metrics and chart data for TV episode activity."""
+    tv_queryset = (user_media or {}).get(MediaTypes.TV.value)
+    episode_datetimes = _collect_episode_datetimes(tv_queryset, start_date, end_date)
+
+    if minutes_per_type is None:
+        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+
+    total_minutes = minutes_per_type.get(MediaTypes.TV.value, 0)
+    total_hours = total_minutes / 60 if total_minutes else 0
+    total_plays = len(episode_datetimes)
+
+    hours_breakdown = _compute_metric_breakdown(
+        total_hours,
+        episode_datetimes,
+        start_date,
+        end_date,
+    )
+    plays_breakdown = _compute_metric_breakdown(
+        total_plays,
+        episode_datetimes,
+        start_date,
+        end_date,
+    )
+
+    color = config.get_stats_color(MediaTypes.TV.value)
+    chart_label = "Episode Plays"
+    charts = _build_media_charts(episode_datetimes, color, chart_label)
+
+    return {
+        "hours": hours_breakdown,
+        "plays": plays_breakdown,
+        "charts": charts,
+        "has_data": total_plays > 0,
+    }
+
+
+def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
+    """Return aggregate metrics and chart data for movie activity."""
+    movie_queryset = (user_media or {}).get(MediaTypes.MOVIE.value)
+    movie_datetimes = _collect_movie_datetimes(movie_queryset, start_date, end_date)
+
+    if minutes_per_type is None:
+        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+
+    total_minutes = minutes_per_type.get(MediaTypes.MOVIE.value, 0)
+    total_hours = total_minutes / 60 if total_minutes else 0
+    total_plays = len(movie_datetimes)
+
+    hours_breakdown = _compute_metric_breakdown(
+        total_hours,
+        movie_datetimes,
+        start_date,
+        end_date,
+    )
+    plays_breakdown = _compute_metric_breakdown(
+        total_plays,
+        movie_datetimes,
+        start_date,
+        end_date,
+    )
+
+    color = config.get_stats_color(MediaTypes.MOVIE.value)
+    chart_label = "Movie Plays"
+    charts = _build_media_charts(movie_datetimes, color, chart_label)
+
+    return {
+        "hours": hours_breakdown,
+        "plays": plays_breakdown,
+        "charts": charts,
+        "has_data": total_plays > 0,
+    }
+
+
+def get_daily_hours_by_media_type(user_media, start_date, end_date):
+    """Build Chart.js-friendly stacked bar data where X axis is dates (inclusive)
+    between start_date and end_date and Y axis is hours per media type per day.
+
+    Currently implemented for movies; other media types included as zeros and can
+    be expanded later.
+    """
+    # If no date range is provided (All Time), infer a sensible range from
+    # available media activity dates so the chart can show a meaningful span.
+    if not start_date or not end_date:
+        # Gather all candidate activity datetimes from the provided media
+        candidate_dates = []
+        for media_list in user_media.values():
+            for media in media_list:
+                activity_dt = _get_activity_datetime(media)
+                if activity_dt:
+                    candidate_dates.append(_localize_datetime(activity_dt))
+
+        if not candidate_dates:
+            # No activity dates available -> nothing to chart
+            return {"labels": [], "datasets": []}
+
+        # Derive start/end from min/max activity datetimes
+        min_dt = min(candidate_dates)
+        max_dt = max(candidate_dates)
+        # Convert to naive date boundaries for the rest of the function
+        start_date = datetime.datetime.combine(min_dt.date(), datetime.time.min)
+        end_date = datetime.datetime.combine(max_dt.date(), datetime.time.max)
+        # Ensure they are timezone-aware in the current timezone
+        try:
+            start_date = timezone.make_aware(start_date)
+            end_date = timezone.make_aware(end_date)
+        except Exception:
+            # If awareness fails, fall back to original naive datetimes
+            pass
+
+    # Normalize to dates (without time)
+    start_date_dt = start_date.date()
+    end_date_dt = end_date.date()
+    if start_date_dt > end_date_dt:
+        start_date_dt, end_date_dt = end_date_dt, start_date_dt
+
+    # Build list of date labels in ISO format (YYYY-MM-DD)
+    num_days = (end_date_dt - start_date_dt).days + 1
+    labels = [(start_date_dt + datetime.timedelta(days=i)).isoformat() for i in range(num_days)]
+
+    # Prepare per-media-type mapping of date -> minutes
+    per_type_minutes = {mt: {label: 0 for label in labels} for mt in user_media.keys()}
+
+    # We'll need the runtime lookup function and logger
+    for media_type, media_list in user_media.items():
+        # Movies
+        if media_type == MediaTypes.MOVIE.value:
+            for media in media_list:
+                activity_dt = _get_activity_datetime(media)
+                if activity_dt is None:
+                    continue
+                activity_date = _localize_datetime(activity_dt).date()
+                if activity_date < start_date_dt or activity_date > end_date_dt:
+                    continue
+
+                # Get runtime in minutes from cache (will attempt metadata fetch if missing)
+                minutes = _get_media_runtime_from_cache(media, logger, "(daily aggregation)")
+                if not minutes or minutes <= 0:
+                    continue
+
+                label = activity_date.isoformat()
+                if label in per_type_minutes[media_type]:
+                    per_type_minutes[media_type][label] += minutes
+
+        # TV shows / Seasons: use per-episode end_date and runtime from episode cache
+        elif media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value:
+            for tv in media_list:
+                seasons = getattr(tv, "seasons", None)
+                if seasons is None:
+                    continue
+                for season in seasons.all():
+                    episodes = getattr(season, "episodes", None)
+                    if episodes is None:
+                        continue
+                    for episode in episodes.all():
+                        if not episode.end_date:
+                            continue
+                        ep_date = _localize_datetime(episode.end_date).date()
+                        if ep_date < start_date_dt or ep_date > end_date_dt:
+                            continue
+                        # runtime from cached episode data
+                        try:
+                            minutes = _calculate_episode_time_from_cache(episode, logger)
+                        except Exception:
+                            minutes = 0
+                        if minutes and minutes > 0:
+                            label = ep_date.isoformat()
+                            if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                                per_type_minutes[media_type][label] += minutes
+
+        # Anime: prefer per-media runtime * progress; if a start/end range exists on the media, distribute evenly, otherwise assign to activity date
+        elif media_type == MediaTypes.ANIME.value:
+            for media in media_list:
+                # total minutes from cached runtime per episode * progress
+                episode_count = getattr(media, "progress", 0) or 0
+                if episode_count <= 0:
+                    continue
+                minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(daily aggregation)")
+                if not minutes or minutes <= 0:
+                    continue
+
+                # Determine distribution date range for this media
+                media_start = getattr(media, "start_date", None)
+                media_end = getattr(media, "end_date", None)
+                if media_start and media_end:
+                    # distribute evenly across overlap with requested range
+                    ds = max(media_start.date(), start_date_dt)
+                    de = min(media_end.date(), end_date_dt)
+                    if ds > de:
+                        continue
+                    days = (de - ds).days + 1
+                    per_day = minutes / days
+                    for i in range(days):
+                        d = (ds + datetime.timedelta(days=i)).isoformat()
+                        if media_type in per_type_minutes and d in per_type_minutes[media_type]:
+                            per_type_minutes[media_type][d] += per_day
+                else:
+                    activity_dt = _get_activity_datetime(media)
+                    if not activity_dt:
+                        continue
+                    label = _localize_datetime(activity_dt).date().isoformat()
+                    if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                        per_type_minutes[media_type][label] += minutes
+
+        # Manga, Games, Books, Comics: use progress field and distribute evenly across item's date span
+        elif media_type in (
+            MediaTypes.MANGA.value,
+            MediaTypes.GAME.value,
+            MediaTypes.BOOK.value,
+            MediaTypes.COMIC.value,
+            MediaTypes.BOARDGAME.value,
+        ):
+            for media in media_list:
+                total_progress = getattr(media, "progress", 0) or 0
+                if not total_progress or total_progress <= 0:
+                    continue
+
+                # For games, progress is stored in minutes; for others we follow user instruction and treat 'progress' as an amount to distribute
+                total_minutes = total_progress
+
+                media_start = getattr(media, "start_date", None)
+                media_end = getattr(media, "end_date", None)
+                if media_start and media_end:
+                    ds = max(media_start.date(), start_date_dt)
+                    de = min(media_end.date(), end_date_dt)
+                    if ds > de:
+                        continue
+                    days = (de - ds).days + 1
+                    per_day = total_minutes / days
+                    for i in range(days):
+                        d = (ds + datetime.timedelta(days=i)).isoformat()
+                        if media_type in per_type_minutes and d in per_type_minutes[media_type]:
+                            per_type_minutes[media_type][d] += per_day
+                else:
+                    activity_dt = _get_activity_datetime(media)
+                    if not activity_dt:
+                        continue
+                    label = _localize_datetime(activity_dt).date().isoformat()
+                    if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                        per_type_minutes[media_type][label] += total_minutes
+
+    # Build datasets for Chart.js: convert minutes -> hours (float)
+    datasets = []
+    for media_type, date_map in per_type_minutes.items():
+        # Skip media types that have zero total minutes
+        total = sum(date_map.values())
+        if total == 0:
+            continue
+
+        datasets.append({
+            "label": app_tags.media_type_readable(media_type),
+            "data": [round(date_map[d] / 60, 2) for d in labels],
+            "background_color": config.get_stats_color(media_type),
+        })
+
+    return {"labels": labels, "datasets": datasets}
+
+
+def get_top_played_media(user_media, start_date, end_date):
+    """Get top played media by total time spent within date range.
+    
+    Returns a dictionary with media types as keys and lists of top media items.
+    Each media item includes total_time_minutes, formatted_duration, and episode_count.
+    """
+    from app.helpers import minutes_to_hhmm
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    top_played = {}
+    
+    # Define the media types we want to show
+    target_media_types = ["movie", "tv", "game", "boardgame", "anime"]
+    
+    for media_type, media_list in user_media.items():
+        # Normalize media type to match our target types
+        normalized_type = media_type.lower()
+        if normalized_type not in target_media_types:
+            continue
+            
+        if not media_list.exists():
+            continue
+            
+        # Get media items with their progress and metadata
+        media_with_progress = []
+        
+        if normalized_type == "movie":
+            aggregated_movies = {}
+            
+            for media in media_list:
+                total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, logger)
+                if total_time_minutes <= 0:
+                    continue
+                
+                item = getattr(media, "item", None)
+                if not item:
+                    continue
+                
+                # Use item id when available, fallback to (media_id, source) tuple
+                item_key = getattr(item, "id", None)
+                if item_key is None:
+                    item_key = (getattr(item, "media_id", None), getattr(item, "source", None))
+                
+                activity = media.end_date or media.start_date or media.created_at
+                if item_key not in aggregated_movies:
+                    aggregated_movies[item_key] = {
+                        'media': media,
+                        'total_time_minutes': total_time_minutes,
+                        'formatted_duration': None,  # populated after aggregation
+                        'episode_count': 0,
+                        'last_activity': activity,
+                        'play_count': 1,
+                        '_media_activity': activity,
+                    }
+                else:
+                    entry = aggregated_movies[item_key]
+                    entry['total_time_minutes'] += total_time_minutes
+                    entry['play_count'] += 1
+                    
+                    if activity and (entry['last_activity'] is None or activity > entry['last_activity']):
+                        entry['last_activity'] = activity
+                    
+                    current_media_activity = entry.get('_media_activity')
+                    if activity and (current_media_activity is None or activity > current_media_activity):
+                        entry['media'] = media
+                        entry['_media_activity'] = activity
+            
+            for entry in aggregated_movies.values():
+                entry['formatted_duration'] = minutes_to_hhmm(entry['total_time_minutes'])
+                entry.pop('_media_activity', None)
+                media_with_progress.append(entry)
+        else:
+            for media in media_list:
+                total_time_minutes = 0
+                episode_count = 0
+                
+                if normalized_type == "tv":
+                    total_time_minutes, episode_count = _calculate_tv_time(media, start_date, end_date, logger)
+                elif normalized_type == "anime":
+                    total_time_minutes, episode_count = _calculate_anime_time(media, start_date, end_date, logger)
+                elif normalized_type == "game":
+                    # For games, use progress field (stored in minutes)
+                    if media.end_date and start_date and end_date:
+                        if start_date <= media.end_date <= end_date:
+                            total_time_minutes += media.progress
+                    elif not start_date and not end_date:
+                        # All time
+                        total_time_minutes += media.progress
+                elif normalized_type == "boardgame":
+                    if (
+                        media.end_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.end_date <= end_date
+                    ):
+                        total_time_minutes += media.progress
+                    elif (
+                        media.start_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.start_date <= end_date
+                    ):
+                        total_time_minutes += media.progress
+                    elif not start_date and not end_date:
+                        total_time_minutes += media.progress
+                else:
+                    # For movies and other media types, get runtime from metadata
+                    total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, logger)
+                
+                if total_time_minutes > 0:
+                    formatted_duration = minutes_to_hhmm(total_time_minutes)
+                    if normalized_type == "boardgame":
+                        formatted_duration = f"{total_time_minutes} play{'s' if total_time_minutes != 1 else ''}"
+
+                    media_with_progress.append({
+                        'media': media,
+                        'total_time_minutes': total_time_minutes,
+                        'formatted_duration': formatted_duration,
+                        'episode_count': episode_count,
+                        'last_activity': media.end_date or media.start_date or media.created_at,
+                        'play_count': 1,
+                    })
+        
+        # Sort by total time, then by most recent activity
+        media_with_progress.sort(
+            key=lambda x: (x['total_time_minutes'], x['last_activity']), 
+            reverse=True
+        )
+        
+        # Take top 10
+        top_played[normalized_type] = media_with_progress[:10]
+    
+    return top_played
