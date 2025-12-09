@@ -3,7 +3,7 @@ from pathlib import Path
 from django import template
 from django.conf import settings
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import formats, timezone
 from django.utils.html import format_html
 from unidecode import unidecode
 
@@ -40,12 +40,34 @@ def slug(arg1):
     urlencode the special characters first.
     e.g Anime: 31687
     """
-    cleaned = template.defaultfilters.slugify(unidecode(arg1))
+    cleaned = template.defaultfilters.slugify(arg1)
     if cleaned == "":
-        return template.defaultfilters.slugify(
+        cleaned = template.defaultfilters.slugify(
             template.defaultfilters.urlencode(unidecode(arg1)),
         )
+        if cleaned == "":
+            cleaned = template.defaultfilters.urlencode(unidecode(arg1))
+
+            if cleaned == "":
+                cleaned = template.defaultfilters.urlencode(arg1)
+
     return cleaned
+
+
+@register.filter
+def date_tracker_format(date):
+    """Format a datetime object to a readable string."""
+    if not date:
+        return None
+
+    local_dt = timezone.localtime(date)
+
+    date_format = "DATETIME_FORMAT" if settings.TRACK_TIME else "DATE_FORMAT"
+
+    return formats.date_format(
+        local_dt,
+        date_format,
+    )
 
 
 @register.filter
@@ -112,6 +134,12 @@ def short_unit(media_type):
 def long_unit(media_type):
     """Return the long unit for the media type."""
     return media_type_config.get_unit(media_type, short=False)
+
+
+@register.filter
+def sources(media_type):
+    """Template filter to get source options for a media type."""
+    return media_type_config.get_sources(media_type)
 
 
 @register.simple_tag
@@ -276,8 +304,8 @@ def unicode_icon(name):
 
 
 @register.simple_tag
-def icon(name, is_active, extra_classes=None):
-    """Return the SVG icon for the media type."""
+def icon(name, is_active, extra_classes="w-5 h-5"):
+    """Return the SVG icon for the given name."""
     base_svg = """<svg xmlns="http://www.w3.org/2000/svg"
                       width="24"
                       height="24"
@@ -302,6 +330,11 @@ def icon(name, is_active, extra_classes=None):
                <path d="M12 8v8"></path>"""
         ),
         "statistics": (
+            """<line x1="18" x2="18" y1="20" y2="10"></line>
+               <line x1="12" x2="12" y1="20" y2="4"></line>
+               <line x1="6" x2="6" y1="20" y2="14"></line>"""
+        ),
+        "history": (
             """<line x1="18" x2="18" y1="20" y2="10"></line>
                <line x1="12" x2="12" y1="20" y2="4"></line>
                <line x1="6" x2="6" y1="20" y2="14"></line>"""
@@ -343,7 +376,6 @@ def icon(name, is_active, extra_classes=None):
         content = other_icons[name]
 
     active_class = "text-indigo-400 " if is_active else ""
-    extra_classes = extra_classes or "w-5 h-5"
 
     svg = base_svg.format(
         content=content,

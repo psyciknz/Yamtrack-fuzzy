@@ -6,6 +6,7 @@ from app.models import MediaTypes, Sources
 # --- Central Configuration Dictionary ---
 MEDIA_TYPE_CONFIG = {
     MediaTypes.TV.value: {
+        "sources": [Sources.TMDB],
         "default_source": Sources.TMDB.label,
         "sample_query": "Breaking Bad",
         "unicode_icon": "📺",
@@ -17,6 +18,7 @@ MEDIA_TYPE_CONFIG = {
             <polyline points="17 2 12 7 7 2"/>""",
     },
     MediaTypes.SEASON.value: {
+        "sources": [Sources.TMDB],
         "default_source": Sources.TMDB.label,
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
@@ -30,6 +32,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("E", "Episode"),
     },
     MediaTypes.EPISODE.value: {
+        "sources": [Sources.TMDB],
         "default_source": Sources.TMDB.label,
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
@@ -38,6 +41,7 @@ MEDIA_TYPE_CONFIG = {
         "svg_icon": """<polygon points="6 3 20 12 6 21 6 3"/>""",
     },
     MediaTypes.MOVIE.value: {
+        "sources": [Sources.TMDB],
         "default_source": Sources.TMDB.label,
         "sample_query": "The Shawshank Redemption",
         "unicode_icon": "🎬",
@@ -56,6 +60,7 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.ANIME.value: {
+        "sources": [Sources.MAL],
         "default_source": Sources.MAL.label,
         "sample_query": "Perfect Blue",
         "unicode_icon": "🎭",
@@ -66,8 +71,10 @@ MEDIA_TYPE_CONFIG = {
             <circle cx="12" cy="12" r="10"/>
             <polygon points="10 8 16 12 10 16 10 8"/>""",
         "unit": ("E", "Episode"),
+        "date_key": "end_date",
     },
     MediaTypes.MANGA.value: {
+        "sources": [Sources.MAL, Sources.MANGAUPDATES],
         "default_source": Sources.MAL.label,
         "sample_query": "Berserk",
         "unicode_icon": "📚",
@@ -85,6 +92,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("#", "Chapter"),
     },
     MediaTypes.GAME.value: {
+        "sources": [Sources.IGDB],
         "default_source": Sources.IGDB.label,
         "sample_query": "Half-Life",
         "unicode_icon": "🎮",
@@ -92,14 +100,21 @@ MEDIA_TYPE_CONFIG = {
         "text_color": "text-yellow-400",
         "stats_color": "#eab308",
         "svg_icon": """
-            <line x1="6" x2="10" y1="12" y2="12"/>
-            <line x1="8" x2="8" y1="10" y2="14"/>
-            <line x1="15" x2="15.01" y1="13" y2="13"/>
-            <line x1="18" x2="18.01" y1="11" y2="11"/>
-            <rect width="20" height="12" x="2" y="6" rx="2"/>""",
+            <line x1="6" x2="10" y1="11" y2="11"/>
+            <line x1="8" x2="8" y1="9" y2="13"/>
+            <line x1="15" x2="15.01" y1="12" y2="12"/>
+            <line x1="18" x2="18.01" y1="10" y2="10"/>
+            <path d="M17.32 5H6.68a4 4 0 0 0-3.978
+            3.59c-.006.052-.01.101-.017.152C2.6049.416
+            2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5
+            2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2
+            2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0
+            3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4
+            4 0 0 0 17.32 5z"/>""",
         "date_key": "release_date",
     },
     MediaTypes.BOOK.value: {
+        "sources": [Sources.HARDCOVER, Sources.OPENLIBRARY],
         "default_source": Sources.HARDCOVER.label,
         "sample_query": "The Great Gatsby",
         "unicode_icon": "📖",
@@ -113,6 +128,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("P", "Page"),
     },
     MediaTypes.COMIC.value: {
+        "sources": [Sources.COMICVINE],
         "default_source": Sources.COMICVINE.label,
         "sample_query": "Batman",
         "unicode_icon": "📕",
@@ -142,6 +158,11 @@ def get_property(media_type, prop_name):
     except KeyError:
         msg = f"Property '{prop_name}' not found for media type '{media_type}'."
         raise KeyError(msg) from None
+
+
+def get_sources(media_type):
+    """Get the list of sources for a media type."""
+    return get_property(media_type, "sources")
 
 
 def get_default_source_name(media_type):

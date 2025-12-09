@@ -1,13 +1,15 @@
-import logging
+import logging  # noqa: I001
+from datetime import timedelta
 
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import prefetch_related_objects
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,9 +17,11 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import helpers, history_processor
+from app import helpers
+from app import history as history_utils
+from app import history_processor
 from app import statistics as stats
-from app.forms import ManualItemForm, get_form_class
+from app.forms import EpisodeForm, ManualItemForm, get_form_class
 from app.models import TV, BasicMedia, Item, MediaTypes, Season, Sources, Status
 from app.providers import manual, services, tmdb
 from app.templatetags import app_tags
@@ -166,13 +170,23 @@ def media_search(request):
     )
     query = request.GET["q"]
     page = int(request.GET.get("page", 1))
+    layout = request.GET.get("layout", "grid")
 
     # only receives source when searching with secondary source
     source = request.GET.get("source")
 
     data = services.search(media_type, query, page, source)
 
-    context = {"data": data, "source": source, "media_type": media_type}
+    # Enrich search results with user tracking data
+    if data.get("results"):
+        data["results"] = helpers.enrich_items_with_user_data(request, data["results"])
+
+    context = {
+        "data": data,
+        "source": source,
+        "media_type": media_type,
+        "layout": layout,
+    }
 
     return render(request, "app/search.html", context)
 
@@ -188,6 +202,14 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
         source,
     )
     current_instance = user_medias[0] if user_medias else None
+
+    # Enrich related items with user tracking data
+    if media_metadata.get("related"):
+        for section_name, related_items in media_metadata["related"].items():
+            if related_items:
+                media_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
+                    request, related_items
+                )
 
     context = {
         "media": media_metadata,
@@ -230,6 +252,22 @@ def season_details(request, source, media_id, title, season_number):  # noqa: AR
             season_metadata,
             episodes_in_db,
         )
+
+    # Enrich related items with user tracking data
+    if season_metadata.get("related"):
+        for section_name, related_items in season_metadata["related"].items():
+            if related_items:
+                season_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
+                    request, related_items
+                )
+
+    # Also enrich TV show related items if they exist
+    if tv_with_seasons_metadata.get("related"):
+        for section_name, related_items in tv_with_seasons_metadata["related"].items():
+            if related_items:
+                tv_with_seasons_metadata["related"][section_name] = helpers.enrich_items_with_user_data(
+                    request, related_items
+                )
 
     context = {
         "media": season_metadata,
@@ -404,6 +442,8 @@ def track_modal(
             season_number=season_number,
         )
         media = user_medias.first()
+        if media:
+            instance_id = media.id
 
     initial_data = {
         "media_id": media_id,
@@ -522,6 +562,11 @@ def episode_save(request):
     episode_number = int(request.POST["episode_number"])
     source = request.POST["source"]
 
+    form = EpisodeForm(request.POST)
+    if not form.is_valid():
+        logger.error("Form validation failed: %s", form.errors)
+        return HttpResponseBadRequest("Invalid form data")
+
     try:
         related_season = Season.objects.get(
             item__media_id=media_id,
@@ -559,11 +604,7 @@ def episode_save(request):
 
         logger.info("%s did not exist, it was created successfully.", related_season)
 
-    end_date = timezone.make_aware(
-        timezone.datetime.strptime(request.POST["date"], "%Y-%m-%dT%H:%M"),
-        timezone=timezone.get_current_timezone(),
-    )
-    related_season.watch(episode_number, end_date)
+    related_season.watch(episode_number, form.cleaned_data["end_date"])
 
     return helpers.redirect_back(request)
 
@@ -827,3 +868,102 @@ def statistics(request):
     }
 
     return render(request, "app/statistics.html", context)
+
+
+@require_GET
+@login_required
+def history_view(request):
+    """Display user's media consumption history with individual episodes."""
+    # Get filter parameters
+    days_filter = request.GET.get("days", "30")
+    page_number = request.GET.get("page", 1)
+
+    # Calculate date range based on filter
+    start_date = None
+    end_date = None
+    if days_filter != "all":
+        try:
+            days = int(days_filter)
+            end_date = timezone.now()
+            start_date = end_date - timedelta(days=days)
+        except (ValueError, TypeError):
+            pass  # Invalid filter, use all results
+
+    # Get consumable media items using the existing stats function
+    consumable_items, media_count = history_utils.get_user_consumable_media(
+        request.user,
+        start_date,
+        end_date,
+    )
+    # Sort all items by completion date (most recent first)
+    sorted_items = sorted(
+        consumable_items,
+        key=lambda x: (
+            timezone.localtime(x.end_date)
+            if hasattr(x, "end_date") and x.end_date
+            else timezone.localtime(x.start_date)
+            if hasattr(x, "start_date") and x.start_date
+            else timezone.now()
+        ),
+        reverse=True,
+    )
+    # Calculate statistics
+    total_items = len(sorted_items)
+    movie_count = sum(1 for item in sorted_items if item.consumable_type == "movie")
+    episode_count = sum(1 for item in sorted_items if item.consumable_type == "episode")
+    anime_count = sum(1 for item in sorted_items if item.consumable_type == "anime")
+    game_count = sum(1 for item in sorted_items if item.consumable_type == "game")
+    book_count = sum(1 for item in sorted_items if item.consumable_type == "book")
+
+    # This week's count
+    week_ago = timezone.now() - timedelta(days=7)
+    week_count = sum(
+        1
+        for item in sorted_items
+        if (
+            (hasattr(item, "end_date") and item.end_date and item.end_date >= week_ago)
+            or (
+                hasattr(item, "start_date")
+                and item.start_date
+                and item.start_date >= week_ago
+            )
+        )
+    )
+
+    # This month's count
+    month_ago = timezone.now() - timedelta(days=30)
+    month_count = sum(
+        1
+        for item in sorted_items
+        if (
+            (hasattr(item, "end_date") and item.end_date and item.end_date >= month_ago)
+            or (
+                hasattr(item, "start_date")
+                and item.start_date
+                and item.start_date >= month_ago
+            )
+        )
+    )
+
+    # Paginate results
+    paginator = Paginator(sorted_items, 25)  # Show 25 items per page
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        "history_items": page_obj,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "is_paginated": page_obj.has_other_pages(),
+        "total_items": total_items,
+        "movie_count": movie_count,
+        "episode_count": episode_count,
+        "anime_count": anime_count,
+        "game_count": game_count,
+        "book_count": book_count,
+        "week_count": week_count,
+        "month_count": month_count,
+        "current_filter": days_filter,
+        "media_count": media_count,
+    }
+
+    return render(request, "app/history.html", context)

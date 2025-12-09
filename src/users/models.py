@@ -24,6 +24,7 @@ class HomeSortChoices(models.TextChoices):
     """Choices for home page sort options."""
 
     UPCOMING = "upcoming", "Upcoming"
+    RECENT = "recent", "Recent"
     COMPLETION = "completion", "Completion"
     EPISODES_LEFT = "episodes_left", "Episodes Left"
     TITLE = "title", "Title"
@@ -475,6 +476,9 @@ class User(AbstractUser):
             "kitsu": "Import from Kitsu",
             "yamtrack": "Import from Yamtrack",
             "hltb": "Import from HowLongToBeat",
+            "steam": "Import from Steam",
+            "imdb": "Import from IMDB",
+            "goodreads": "Import from GoodReads",
         }
 
         # Reverse mapping to get source from task name
@@ -486,7 +490,9 @@ class User(AbstractUser):
         task_results = TaskResult.objects.filter(
             task_kwargs__contains=task_result_filter_text,
             task_name__in=import_tasks.values(),
-        ).order_by("-date_done")  # Most recent first
+        ).order_by(
+            "-date_done",
+        )  # Most recent first
 
         # Build results list
         results = []
@@ -501,7 +507,6 @@ class User(AbstractUser):
                     "status": task.status,
                     "summary": processed_task.summary,
                     "errors": processed_task.errors,
-                    "mode": processed_task.mode,
                 },
             )
 

@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}History - Yamtrack{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-gray-100">Watch History</h1>
+        
+        <!-- Filter Controls -->
+        <div class="flex items-center space-x-4">
+            <div class="relative">
+                <select id="timeFilter" class="appearance-none bg-[#272c31] border border-[#2c3136] rounded-lg px-4 py-2 pr-8 text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]">
+                    <option value="7">Last Week</option>
+                    <option value="30" selected>Last Month</option>
+                    <option value="90">Last 3 Months</option>
+                    <option value="365">Last Year</option>
+                    <option value="all">All Time</option>
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Total Items</div>
+            <div class="text-2xl font-bold text-gray-100" id="totalItems">{{ total_items }}</div>
+        </div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Movies</div>
+            <div class="text-2xl font-bold text-gray-100" id="movieCount">{{ movie_count }}</div>
+        </div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Episodes</div>
+            <div class="text-2xl font-bold text-gray-100" id="episodeCount">{{ episode_count }}</div>
+        </div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">Games</div>
+            <div class="text-2xl font-bold text-gray-100" id="gameCount">{{ game_count|default:0 }}</div>
+        </div>
+        <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] p-4">
+            <div class="text-sm text-gray-400">This Week</div>
+            <div class="text-2xl font-bold text-gray-100" id="weekCount">{{ week_count }}</div>
+        </div>
+    </div>
+
+    <!-- History List -->
+    <div class="bg-[#1a1d20] rounded-lg border border-[#2c3136] overflow-hidden">
+        <div id="historyList">
+            {% if history_items %}
+                {% for item in history_items %}
+                    <div class="history-item border-b border-[#2c3136] last:border-b-0" 
+                         data-date="{% if item.end_date %}{{ item.end_date|date:'Y-m-d' }}{% elif item.start_date %}{{ item.start_date|date:'Y-m-d' }}{% endif %}">
+                        <div class="flex items-center p-4 hover:bg-[#23272b] transition-colors duration-200">
+                            <!-- Poster -->
+                            <div class="flex-shrink-0 mr-4">
+                                <img src="{{ item.item.image|default:'/static/img/no-poster.png' }}" 
+                                     alt="{{ item.display_title }}" 
+                                     class="w-16 h-24 object-cover rounded-lg shadow-sm border border-[#2c3136]">
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="flex-grow min-w-0">
+                                <div class="flex items-start justify-between">
+                                    <div class="min-w-0 flex-grow">
+                                        <h3 class="text-lg font-semibold text-gray-100 truncate">
+                                            {{ item.display_title }}
+                                        </h3>
+                                        
+                                        <!-- Media Type & Status Info -->
+                                        <div class="flex items-center mt-1 space-x-2">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                {% if item.consumable_type == 'movie' %}bg-[#1e3a8a] text-blue-300
+                                                {% elif item.consumable_type == 'episode' %}bg-[#166534] text-green-300
+                                                {% elif item.consumable_type == 'anime' %}bg-[#7c2d12] text-purple-300
+                                                {% elif item.consumable_type == 'game' %}bg-[#7c3aed] text-purple-300
+                                                {% elif item.consumable_type == 'book' %}bg-[#92400e] text-orange-300
+                                                {% else %}bg-[#374151] text-gray-300{% endif %}">
+                                                {{ item.consumable_type|title }}
+                                            </span>
+                                            
+                                            {% if item.status %}
+                                                <span class="text-xs px-2 py-1 rounded-full
+                                                    {% if item.status == 'completed' %}bg-green-900 text-green-300
+                                                    {% elif item.status == 'in_progress' %}bg-blue-900 text-blue-300
+                                                    {% elif item.status == 'paused' %}bg-yellow-900 text-yellow-300
+                                                    {% elif item.status == 'dropped' %}bg-red-900 text-red-300
+                                                    {% else %}bg-gray-900 text-gray-300{% endif %}">
+                                                    {{ item.get_status_display|default:item.status|title }}
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <!-- Additional Info -->
+                                        <div class="text-sm text-gray-500 mt-1">
+                                            {% if item.progress %}
+                                                Progress: {{ item.progress }}
+                                                {% if item.consumable_type == 'episode' %} episodes
+                                                {% elif item.consumable_type == 'game' %} hours
+                                                {% elif item.consumable_type == 'book' %} pages
+                                                {% endif %}
+                                            {% endif %}
+                                            
+                                            {% if item.score %}
+                                                <span class="ml-2">• Score: {{ item.score }}/10</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Date & Time -->
+                                    <div class="flex-shrink-0 text-right ml-4">
+                                        {% if item.end_date %}
+                                            <div class="text-sm font-medium text-gray-100">
+                                                {{ item.end_date|date:"M d, Y" }}
+                                            </div>
+                                            <div class="text-sm text-gray-400">
+                                                Completed
+                                            </div>
+                                        {% elif item.start_date %}
+                                            <div class="text-sm font-medium text-gray-100">
+                                                {{ item.start_date|date:"M d, Y" }}
+                                            </div>
+                                            <div class="text-sm text-gray-400">
+                                                Started
+                                            </div>
+                                        {% endif %}
+                                        
+                                        {% if item.notes %}
+                                            <div class="text-xs text-gray-500 mt-1 max-w-32 truncate" title="{{ item.notes }}">
+                                                "{{ item.notes }}"
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="flex flex-col items-center justify-center py-12">
+                    <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-100 mb-1">No history found</h3>
+                    <p class="text-gray-400">Start watching some media to see your history here.</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="hidden flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4a9eff]"></div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+        <div class="flex items-center justify-between mt-6">
+            <div class="text-sm text-gray-300">
+                Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ paginator.count }} results
+            </div>
+            
+            <div class="flex items-center space-x-1">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] rounded-l-lg hover:bg-[#2a2e33] hover:text-gray-300">
+                        First
+                    </a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] hover:bg-[#2a2e33] hover:text-gray-300">
+                        Previous
+                    </a>
+                {% endif %}
+                
+                <span class="px-3 py-2 text-sm font-medium text-gray-100 bg-[#4a9eff] border border-[#4a9eff]">
+                    {{ page_obj.number }}
+                </span>
+                
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] hover:bg-[#2a2e33] hover:text-gray-300">
+                        Next
+                    </a>
+                    <a href="?page={{ paginator.num_pages }}{% if request.GET.days %}&days={{ request.GET.days }}{% endif %}" 
+                       class="px-3 py-2 text-sm font-medium text-gray-400 bg-[#272c31] border border-[#2c3136] rounded-r-lg hover:bg-[#2a2e33] hover:text-gray-300">
+                        Last
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const timeFilter = document.getElementById('timeFilter');
+    const historyList = document.getElementById('historyList');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    
+    timeFilter.addEventListener('change', function() {
+        const days = this.value;
+        const url = new URL(window.location);
+        
+        if (days === 'all') {
+            url.searchParams.delete('days');
+        } else {
+            url.searchParams.set('days', days);
+        }
+        url.searchParams.delete('page'); // Reset to first page
+        
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
+        historyList.style.opacity = '0.5';
+        
+        // Navigate to filtered URL
+        window.location.href = url.toString();
+    });
+    
+    // Set the current filter value from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentDays = urlParams.get('days') || 'all';
+    timeFilter.value = currentDays;
+});
+</script>
+{% endblock %}

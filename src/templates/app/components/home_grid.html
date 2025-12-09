@@ -25,11 +25,11 @@
           </svg>
           <span class="text-xs font-medium text-white drop-shadow-sm truncate">
             {% if media.next_event.content_number %}
-              {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }} 
+              {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
             {% else %}
               Release
             {% endif %}
-              
+
             • {{ media.next_event.datetime|natural_day }} {{ media.next_event.display_time }}
           </span>
         </div>
@@ -41,6 +41,7 @@
         <div class="relative flex items-center justify-center space-x-2.5">
           {# Track Button #}
           <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
+                  title="Add to tracker"
                   hx-get="{% media_view_url 'track_modal' media.item %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ media.id }}"}'
                   hx-target="#{% component_id 'track' media.item media.id %}"
@@ -62,6 +63,7 @@
 
           {# Lists Button #}
           <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
+                  title="Add to custom lists"
                   hx-get="{% media_view_url 'lists_modal' media.item %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                   hx-target="#{% component_id 'lists' media.item %}"
@@ -86,6 +88,7 @@
 
           {# History Button #}
           <button class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
+                  title="View your activity history"
                   hx-get="{% media_view_url 'history_modal' media.item %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                   hx-target="#{% component_id 'history' media.item %}"
@@ -116,7 +119,7 @@
       <a href="{{ media.item|media_url }}"
          class="text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 text-center"
          title="{{ media }}">{{ media }}</a>
-      <div id="progress-changer-{{ media.id }}">
+      <div id="progress-{{ media.item.media_type }}-{{ media.id }}">
         {% include "app/components/progress_changer.html" with media=media csrf_token=csrf_token MediaTypes=MediaTypes only %}
       </div>
     </div>

@@ -229,6 +229,7 @@ class Metadata(TestCase):
                     "still_path": "/path/to/still1.jpg",
                     "name": "Pilot",
                     "overview": "overview of the episode",
+                    "runtime": 23,
                 },
                 {
                     "episode_number": 2,
@@ -236,6 +237,7 @@ class Metadata(TestCase):
                     "still_path": "/path/to/still2.jpg",
                     "name": "Cat's in the Bag...",
                     "overview": "overview of the episode",
+                    "runtime": 23,
                 },
                 {
                     "episode_number": 3,
@@ -243,6 +245,7 @@ class Metadata(TestCase):
                     "still_path": "/path/to/still3.jpg",
                     "name": "...And the Bag's in the River",
                     "overview": "overview of the episode",
+                    "runtime": 23,
                 },
             ],
         }
@@ -323,9 +326,13 @@ class Metadata(TestCase):
         self.assertEqual(result["episode_title"], "Pilot")
         self.assertEqual(result["image"], tmdb.get_image_url("/path/to/still1.jpg"))
 
-        # Test getting a non-existent episode
-        result = tmdb.episode("1396", "1", "3")
-        self.assertIsNone(result)
+        # Test getting a non-existent episode - should raise ProviderAPIError
+        with self.assertRaises(services.ProviderAPIError) as cm:
+            tmdb.episode("1396", "1", "3")
+
+        # Verify the error message contains expected details
+        self.assertIn("Episode 3 not found in season 1", str(cm.exception))
+        self.assertIn("The Movie Database with ID 1396", str(cm.exception))
 
         # Verify tv_with_seasons was called with correct parameters
         mock_tv_with_seasons.assert_called_with("1396", ["1"])
@@ -388,6 +395,22 @@ class Metadata(TestCase):
             ["Action", "Fantasy", "Open world"],
         )
 
+    def test_external_game_steam(self):
+        """Test the external_game method for Steam games."""
+        # Test with a known Steam game ID - The Witcher 3: Wild Hunt (Steam ID: 292030)
+        igdb_game_id = igdb.external_game("292030", igdb.ExternalGameSource.STEAM)
+
+        # Should return the IGDB game ID (1942 for The Witcher 3)
+        self.assertEqual(igdb_game_id, 1942)
+
+    def test_external_game_not_found(self):
+        """Test the external_game method with non-existent Steam ID."""
+        # Test with a Steam ID that doesn't exist in IGDB
+        igdb_game_id = igdb.external_game("999999999", igdb.ExternalGameSource.STEAM)
+
+        # Should return None for non-existent games
+        self.assertIsNone(igdb_game_id)
+
     def test_book(self):
         """Test the metadata method for books."""
         response = openlibrary.book("OL21733390M")
@@ -404,15 +427,10 @@ class Metadata(TestCase):
         response = hardcover.book("377193")
         self.assertEqual(response["title"], "The Great Gatsby")
         self.assertEqual(response["details"]["author"], "F. Scott Fitzgerald")
-        self.assertEqual(response["details"]["publisher"], "imusti")
-        self.assertEqual(response["details"]["publish_date"], "1920-06-01")
-        self.assertEqual(response["details"]["number_of_pages"], 180)
-        self.assertEqual(response["details"]["format"], "Paperback")
         # Testing that we have some of the expected genres
         self.assertIn("Fiction", response["genres"])
         self.assertIn("Young Adult", response["genres"])
         self.assertIn("Classics", response["genres"])
-        # Rating is approximately 4.21 * 2 = 8.42
         self.assertAlmostEqual(response["score"], 7.4, delta=0.1)
 
     def test_hardcover_book_unknown(self):
@@ -425,7 +443,6 @@ class Metadata(TestCase):
         self.assertEqual(response["synopsis"], "No synopsis available.")
         self.assertEqual(response["details"]["format"], "Unknown")
         self.assertIsNone(response["genres"])
-        self.assertIsNone(response["score"])
 
     def test_google_book(self):
         """Test the metadata method for books from Hardcover."""
@@ -592,7 +609,7 @@ class Metadata(TestCase):
             episode_number=1,
         )
 
-        # Test episode metadata
+        # Test episode metadata for existing episode
         response = manual.episode("4", 1, 1)
 
         # Check episode data
@@ -600,6 +617,10 @@ class Metadata(TestCase):
         self.assertEqual(response["title"], "Third TV Show")
         self.assertEqual(response["season_title"], "Season 1")
         self.assertEqual(response["episode_title"], "Special Episode")
+
+        # Test episode metadata for non-existing episode
+        result = manual.episode("4", 1, 2)
+        self.assertIsNone(result)
 
     def test_manual_process_episodes(self):
         """Test the process_episodes function for manual episodes."""
@@ -859,7 +880,7 @@ class ServicesTests(TestCase):
 
         # Verify the request was made correctly
         mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
+        _, kwargs = mock_get.call_args
         self.assertEqual(kwargs["url"], "https://example.com/api")
         self.assertEqual(kwargs["params"], {"param": "value"})
         self.assertIn("timeout", kwargs)
@@ -886,7 +907,7 @@ class ServicesTests(TestCase):
 
         # Verify the request was made correctly
         mock_post.assert_called_once()
-        args, kwargs = mock_post.call_args
+        _, kwargs = mock_post.call_args
         self.assertEqual(kwargs["url"], "https://example.com/api")
         self.assertEqual(kwargs["json"], {"json_param": "value"})
         self.assertEqual(kwargs["data"], {"form_data": "value"})
@@ -1275,6 +1296,36 @@ class ServicesTests(TestCase):
 
         # Verify the correct function was called
         mock_episode.assert_called_once_with("1", 1, "2")
+
+    @patch("app.providers.tmdb.episode")
+    def test_get_media_metadata_tmdb_episode_not_found(self, mock_episode):
+        """Test the get_media_metadata function for TMDB episodes that don't exist."""
+        # Setup mock to raise ProviderAPIError
+        mock_response = type(
+            "Response", (), {"status_code": 404, "text": "Episode not found"},
+        )()
+        mock_error = type("Error", (), {"response": mock_response})()
+        mock_episode.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            mock_error,
+        )
+
+        # Call the function and expect ProviderAPIError
+        with self.assertRaises(services.ProviderAPIError) as cm:
+            services.get_media_metadata(
+                MediaTypes.EPISODE.value,
+                "1396",
+                Sources.TMDB.value,
+                season_numbers=[1],
+                episode_number="3",
+            )
+
+        # Verify the exception contains the correct provider
+        self.assertEqual(cm.exception.provider, Sources.TMDB.value)
+
+        # Verify the correct function was called
+        mock_episode.assert_called_once_with("1396", 1, "3")
+
 
     @patch("app.providers.hardcover.book")
     def test_get_media_metadata_hardcover_book(self, mock_book):

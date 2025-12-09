@@ -51,11 +51,9 @@ def get_season_items(media_id):
 def process_seasons(season_items, response):
     """Process all seasons and return total episode count."""
     num_episodes = 0
+    response["related"]["seasons"] = []
 
     for season in season_items:
-        if "seasons" not in response["related"]:
-            response["related"]["seasons"] = []
-
         season_episodes = get_season_episodes(season)
         episodes_response = build_episodes_response(season_episodes)
         season_response = build_season_response(
@@ -100,7 +98,7 @@ def get_season_episodes(season):
         source=Sources.MANUAL.value,
         media_type=MediaTypes.EPISODE.value,
         season_number=season.season_number,
-    )
+    ).order_by("episode_number")
 
 
 def episode(media_id, season_number, episode_number):

@@ -36,6 +36,8 @@ class JellyfinWebhookTests(TestCase):
                     "Imdb": "tt0583459",
                 },
                 "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
                 "UserData": {"Played": True},
             },
         }
@@ -105,7 +107,7 @@ class JellyfinWebhookTests(TestCase):
                 "Name": "Perfect Blue",
                 "ProductionYear": 1997,
                 "Type": "Movie",
-                "ProviderIds": {"Tmdb": "10494"},
+                "ProviderIds": {"Imdb": "tt0156887"},
                 "UserData": {"Played": True},
             },
         }
@@ -139,6 +141,8 @@ class JellyfinWebhookTests(TestCase):
                 },
                 "UserData": {"Played": True},
                 "SeriesName": "Frieren: Beyond Journey's End",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
             },
         }
 

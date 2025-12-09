@@ -4,7 +4,7 @@ import json
 import warnings
 import zoneinfo
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from celery.schedules import crontab
 from decouple import (
@@ -21,6 +21,8 @@ from django.core.cache import CacheKeyWarning
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
     FORCE_SCRIPT_NAME = BASE_URL
+
+REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -88,6 +90,9 @@ for url in URLS:
     CSRF_TRUSTED_ORIGINS.append(url)
     ALLOWED_HOSTS.append(urlparse(url).hostname)
 
+if BASE_URL:
+    CSRF_COOKIE_PATH = BASE_URL + "/"
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Application definition
@@ -111,12 +116,12 @@ INSTALLED_APPS = [
     "simple_history",
     "widget_tweaks",
     "health_check",
-    "health_check.db",
     "health_check.cache",
     "health_check.storage",
     "health_check.contrib.migrations",
     "health_check.contrib.celery_ping",
     "health_check.contrib.redis",
+    "health_check.contrib.db_heartbeat",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
@@ -182,8 +187,20 @@ if config("DB_HOST", default=None):
             "USER": config("DB_USER", default=secret("DB_USER_FILE")),
             "PASSWORD": config("DB_PASSWORD", default=secret("DB_PASSWORD_FILE")),
             "PORT": config("DB_PORT"),
+            "OPTIONS": {
+                "pool": True,
+            },
         },
     }
+
+    sslmode = config("DB_SSL_MODE", default=None)
+    if sslmode:
+        DATABASES["default"]["OPTIONS"]["sslmode"] = sslmode
+
+    sslcertmode = config("DB_SSL_CERT_MODE", default=None)
+    if sslcertmode:
+        DATABASES["default"]["OPTIONS"]["sslcertmode"] = sslcertmode
+
 else:
     DATABASES = {
         "default": {
@@ -192,17 +209,18 @@ else:
         },
     }
 
-
 # Cache
 # https://docs.djangoproject.com/en/stable/topics/cache/
-CACHE_TIMEOUT = 18000  # 5 hours
+CACHE_TIMEOUT = 86400  # 24 hours
 REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+KEY_PREFIX = f"{REDIS_PREFIX}" if REDIS_PREFIX else ""
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": REDIS_URL,
         "TIMEOUT": CACHE_TIMEOUT,
         "VERSION": 10,
+        "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
@@ -229,14 +247,14 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "loggers": {
-        "requests_ratelimiter": {
-            "level": "DEBUG" if DEBUG else "INFO",
+        "requests_ratelimiter.requests_ratelimiter": {
+            "level": "DEBUG" if DEBUG else "WARNING",
         },
         "psycopg": {
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "DEBUG" if DEBUG else "WARNING",
         },
         "urllib3": {
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "DEBUG" if DEBUG else "WARNING",
         },
     },
     "formatters": {
@@ -301,6 +319,8 @@ VERSION = config("VERSION", default="dev")
 
 ADMIN_ENABLED = config("ADMIN_ENABLED", default=False, cast=bool)
 
+TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
+
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
 IMG_NONE = "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-basic-38-picture-grey-c2ebdbb057f2a7614185931650f8cee23fa137b93812ccb132b9df511df1cfac.svg"
@@ -345,6 +365,13 @@ IGDB_SECRET = config(
 )
 IGDB_NSFW = config("IGDB_NSFW", default=False, cast=bool)
 
+STEAM_API_KEY = config(
+    "STEAM_API_KEY",
+    default=secret(
+        "STEAM_API_KEY_FILE", "",
+    ),  # Generate default key https://steamcommunity.com/dev/apikey
+)
+
 HARDCOVER_API = config(
     "HARDCOVER_API",
     default=secret(
@@ -375,18 +402,43 @@ TRAKT_API = config(
         "b4d9702b11cfaddf5e863001f68ce9d4394b678926e8a3f64d47bf69a55dd0fe",
     ),
 )
+
+TRAKT_API_SECRET = config(
+    "TRAKT_API_SECRET",
+    default=secret(
+        "TRAKT_API_SECRET_FILE",
+        "",
+    ),
+)
+
+ANILIST_ID = config(
+    "ANILIST_ID",
+    default=secret(
+        "ANILIST_ID_FILE",
+        "",
+    ),
+)
+
+ANILIST_SECRET = config(
+    "ANILIST_SECRET",
+    default=secret(
+        "ANILIST_SECRET_FILE",
+        "",
+    ),
+)
+
 SIMKL_ID = config(
     "SIMKL_ID",
     default=secret(
         "SIMKL_ID_FILE",
-        "f1df351ddbace7e2c52f0010efdeb1fd59d379d9cdfb88e9a847c68af410db0e",
+        "a973e57e85d94068315d5ac29669d85da8abc0fb7aff1d22e00e04bdf1882578",
     ),
 )
 SIMKL_SECRET = config(
     "SIMKL_SECRET",
     default=secret(
         "SIMKL_SECRET_FILE",
-        "9bb254894a598894bee14f61eafdcdca47622ab346632f951ed7220a3de289b5",
+        "1b548a88ac7884a757cc58a552842913a9337f3cab3a4905836c6dc305dda316",
     ),
 )
 
@@ -423,6 +475,12 @@ SELECT2_THEME = "tailwindcss-4"
 
 CELERY_BROKER_URL = REDIS_URL
 CELERY_TIMEZONE = TIME_ZONE
+
+if REDIS_PREFIX:
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        "global_keyprefix": f"{REDIS_PREFIX}",
+        "queue_prefix": f"{REDIS_PREFIX}",
+    }
 
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 CELERY_WORKER_CONCURRENCY = 1
@@ -487,7 +545,10 @@ else:
     # Empty CSRF_TRUSTED_ORIGINS, default to http
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = "http"
 
-ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/?loggedout=1"
+ACCOUNT_LOGOUT_REDIRECT_URL = config(
+    "ACCOUNT_LOGOUT_REDIRECT_URL",
+    default="/accounts/login/?loggedout=1",
+)
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_USER_MODEL_EMAIL_FIELD = None
 ACCOUNT_FORMS = {
@@ -496,7 +557,10 @@ ACCOUNT_FORMS = {
 }
 
 if BASE_URL:
-    ACCOUNT_LOGOUT_REDIRECT_URL = f"{BASE_URL}/accounts/login/?loggedout=1"
+    # Join base only if relative URL
+    if not urlparse(ACCOUNT_LOGOUT_REDIRECT_URL).netloc:
+        ACCOUNT_LOGOUT_REDIRECT_URL = urljoin(BASE_URL, ACCOUNT_LOGOUT_REDIRECT_URL)
+    SESSION_COOKIE_PATH = BASE_URL + "/"
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
 

@@ -3,14 +3,26 @@ from django.urls import path
 from integrations import views
 
 urlpatterns = [
+    path("trakt-oauth", views.trakt_oauth, name="trakt_oauth"),
     path("import/trakt", views.import_trakt, name="import_trakt"),
     path("simkl-oauth", views.simkl_oauth, name="simkl_oauth"),
     path("import/simkl", views.import_simkl, name="import_simkl"),
     path("import/mal", views.import_mal, name="import_mal"),
-    path("import/anilist", views.import_anilist, name="import_anilist"),
+    path("import/anilist/oauth", views.anilist_oauth, name="import_anilist_oauth"),
+    path("import/anilist/private",
+         views.import_anilist_private,
+         name="import_anilist_private",
+    ),
+    path("import/anilist/public",
+         views.import_anilist_public,
+         name="import_anilist_public",
+    ),
     path("import/kitsu", views.import_kitsu, name="import_kitsu"),
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
+    path("import/steam", views.import_steam, name="import_steam"),
+    path("import/imdb", views.import_imdb, name="import_imdb"),
+    path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("export/csv", views.export_csv, name="export_csv"),
     path(
         "webhook/jellyfin/<str:token>",

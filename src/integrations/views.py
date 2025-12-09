@@ -2,6 +2,7 @@
 
 import json
 import logging
+import secrets
 
 from django.conf import settings
 from django.contrib import messages
@@ -16,35 +17,57 @@ from django.views.decorators.http import require_GET, require_POST
 
 import users
 from integrations import exports, tasks
-from integrations.imports import helpers, simkl
+from integrations.imports import anilist, helpers, simkl, trakt
 from integrations.webhooks import emby, jellyfin, plex
 
 logger = logging.getLogger(__name__)
 
 
 @require_POST
-def import_trakt(request):
-    """View for importing anime and manga data from Trakt."""
-    username = request.POST.get("user")
-    if not username:
-        messages.error(request, "Trakt username is required.")
-        return redirect("import_data")
+def trakt_oauth(request):
+    """View for initiating Trakt OAuth2 authorization flow."""
+    redirect_uri = request.build_absolute_uri(reverse("import_trakt"))
+    url = "https://trakt.tv/oauth/authorize"
+    state = {
+        "mode": request.POST["mode"],
+        "frequency": request.POST["frequency"],
+        "time": request.POST["time"],
+    }
+    state_token = secrets.token_urlsafe(32)
+    request.session[state_token] = state
+    return redirect(
+        f"{url}?client_id={settings.TRAKT_API}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+    )
 
-    mode = request.POST["mode"]
-    frequency = request.POST["frequency"]
+
+@require_GET
+def import_trakt(request):
+    """View for getting the Trakt OAuth2 token."""
+    oauth_callback = trakt.handle_oauth_callback(request)
+    enc_token = helpers.encrypt(oauth_callback["refresh_token"])
+    state_token = request.GET["state"]
+
+    frequency = request.session[state_token]["frequency"]
+    mode = request.session[state_token]["mode"]
+    import_time = request.session[state_token]["time"]
 
     if frequency == "once":
-        tasks.import_trakt.delay(username=username, user_id=request.user.id, mode=mode)
+        tasks.import_trakt.delay(
+            token=enc_token,
+            user_id=request.user.id,
+            mode=mode,
+            username=oauth_callback["username"],
+        )
         messages.info(request, "The task to import media from Trakt has been queued.")
     else:
-        import_time = request.POST["time"]
         helpers.create_import_schedule(
-            username,
+            oauth_callback["username"],
             request,
             mode,
             frequency,
             import_time,
             "Trakt",
+            token=enc_token,
         )
     return redirect("import_data")
 
@@ -55,24 +78,44 @@ def simkl_oauth(request):
     redirect_uri = request.build_absolute_uri(reverse("import_simkl"))
     url = "https://simkl.com/oauth/authorize"
 
-    mode = request.POST["mode"]
-    # store in session because simkl drops all additional parameters
-    request.session["simkl_import_mode"] = mode
+    state = {
+        "mode": request.POST["mode"],
+        "frequency": request.POST["frequency"],
+        "time": request.POST["time"],
+    }
+    state_token = secrets.token_urlsafe(32)
+    request.session[state_token] = state
 
     return redirect(
-        f"{url}?client_id={settings.SIMKL_ID}&redirect_uri={redirect_uri}&response_type=code",
+        f"{url}?client_id={settings.SIMKL_ID}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
     )
 
 
 @require_GET
 def import_simkl(request):
     """View for getting the SIMKL OAuth2 token."""
-    mode = request.session.get("simkl_import_mode")
-    request.session.pop("simkl_import_mode", None)  # Clean up session
+    oauth_callback = simkl.get_token(request)
+    enc_token = helpers.encrypt(oauth_callback["access_token"])
+    state_token = request.GET["state"]
 
-    token = simkl.get_token(request)
-    tasks.import_simkl.delay(username=token, user_id=request.user.id, mode=mode)
-    messages.info(request, "The task to import media from Simkl has been queued.")
+    frequency = request.session[state_token]["frequency"]
+    mode = request.session[state_token]["mode"]
+    import_time = request.session[state_token]["time"]
+
+    if frequency == "once":
+        tasks.import_simkl.delay(token=enc_token, user_id=request.user.id, mode=mode)
+        messages.info(request, "The task to import media from Simkl has been queued.")
+    else:
+        helpers.create_import_schedule(
+            oauth_callback["username"],
+            request,
+            mode,
+            frequency,
+            import_time,
+            "SIMKL",
+            token=enc_token,
+        )
+
     return redirect("import_data")
 
 
@@ -107,7 +150,62 @@ def import_mal(request):
 
 
 @require_POST
-def import_anilist(request):
+def anilist_oauth(request):
+    """Initiate AniList OAuth flow."""
+    redirect_uri = request.build_absolute_uri(reverse("import_anilist_private"))
+    url = "https://anilist.co/api/v2/oauth/authorize"
+    state = {
+        "mode": request.POST["mode"],
+        "frequency": request.POST["frequency"],
+        "time": request.POST["time"],
+    }
+
+    state_token = secrets.token_urlsafe(32)
+    request.session[state_token] = state
+
+    return redirect(
+        f"{url}?client_id={settings.ANILIST_ID}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+    )
+
+@require_GET
+def import_anilist_private(request):
+    """View for getting the AniList OAuth2 token."""
+    oauth_callback = anilist.get_token(request)
+    enc_token = helpers.encrypt(oauth_callback["access_token"])
+    state_token = request.GET["state"]
+    username = oauth_callback["username"]
+
+    if not username:
+        messages.error(request, "AniList username is required.")
+        return redirect("import_data")
+
+    frequency = request.session[state_token]["frequency"]
+    mode = request.session[state_token]["mode"]
+    import_time = request.session[state_token]["time"]
+
+    if frequency == "once":
+        tasks.import_anilist.delay(
+            user_id=request.user.id,
+            mode=mode,
+            username=username,
+            token=enc_token,
+        )
+        messages.info(request, "AniList import queued.")
+    else:
+        helpers.create_import_schedule(
+            username=username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="AniList",
+            token=enc_token,
+        )
+    return redirect("import_data")
+
+
+@require_POST
+def import_anilist_public(request):
     """View for importing anime and manga data from AniList."""
     username = request.POST.get("user")
     if not username:
@@ -116,23 +214,23 @@ def import_anilist(request):
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
+    import_time = request.POST["time"]
 
     if frequency == "once":
         tasks.import_anilist.delay(
-            username=username,
             user_id=request.user.id,
             mode=mode,
+            username=username,
         )
-        messages.info(request, "The task to import media from AniList has been queued.")
+        messages.info(request, "AniList import queued.")
     else:
-        import_time = request.POST["time"]
         helpers.create_import_schedule(
-            username,
-            request,
-            mode,
-            frequency,
-            import_time,
-            "AniList",
+            username=username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="AniList",
         )
     return redirect("import_data")
 
@@ -208,6 +306,76 @@ def import_hltb(request):
     return redirect("import_data")
 
 
+@require_POST
+def import_steam(request):
+    """View for importing game data from Steam."""
+    steam_id = request.POST.get("user")
+    if not steam_id:
+        messages.error(request, "Steam ID is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    frequency = request.POST["frequency"]
+
+    if frequency == "once":
+        tasks.import_steam.delay(username=steam_id, user_id=request.user.id, mode=mode)
+        messages.info(request, "The task to import media from Steam has been queued.")
+    else:
+        import_time = request.POST["time"]
+        helpers.create_import_schedule(
+            steam_id,
+            request,
+            mode,
+            frequency,
+            import_time,
+            "Steam",
+        )
+    return redirect("import_data")
+
+
+def import_imdb(request):
+    """View for importing data from IMDB."""
+    file = request.FILES.get("imdb_csv")
+
+    if not file:
+        messages.error(request, "IMDB CSV file is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    tasks.import_imdb.delay(
+        file=request.FILES["imdb_csv"],
+        user_id=request.user.id,
+        mode=mode,
+    )
+    messages.info(
+        request,
+        "The task to import media from IMDB CSV file has been queued.",
+    )
+    return redirect("import_data")
+
+
+@require_POST
+def import_goodreads(request):
+    """View for importing books data from GoodReads CSV."""
+    file = request.FILES.get("goodreads_csv")
+
+    if not file:
+        messages.error(request, "GoodReads CSV file is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    tasks.import_goodreads.delay(
+        file=request.FILES["goodreads_csv"],
+        user_id=request.user.id,
+        mode=mode,
+    )
+    messages.info(
+        request,
+        "The task to import media from GoodReads CSV file has been queued.",
+    )
+    return redirect("import_data")
+
+
 @require_GET
 def export_csv(request):
     """View for exporting all media data to a CSV file."""
@@ -235,7 +403,14 @@ def jellyfin_webhook(request, token):
         )
         return HttpResponse(status=401)
 
-    payload = json.loads(request.body)
+    # Attach User instance so history_user_id is populated
+    request.user = user
+    data = request.body
+    if not data:
+        logger.warning("Missing payload in Jellyfin webhook request")
+        return HttpResponse("Missing payload", status=400)
+
+    payload = json.loads(data)
     processor = jellyfin.JellyfinWebhookProcessor()
     processor.process_payload(payload, user)
     return HttpResponse(status=200)
@@ -255,14 +430,17 @@ def plex_webhook(request, token):
         )
         return HttpResponse(status=401)
 
+    # Attach User instance so history_user_id is populated
+    request.user = user
+
     # https://support.plex.tv/hc/en-us/articles/115002267687-Webhooks
     # As stated above, the payload is sent in JSON format inside a multipart
     # HTTP POST request. For the media.play and media.rate events, a second part of
     # the POST request contains a JPEG thumbnail for the media.
 
-    # Access payload data
     data = request.POST.get("payload")
     if not data:
+        logger.warning("Missing payload in Plex webhook request")
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
@@ -285,12 +463,15 @@ def emby_webhook(request, token):
         )
         return HttpResponse(status=401)
 
+    # Attach User instance so history_user_id is populated
+    request.user = user
+
     # The payload is sent in JSON format inside a multipart
     # HTTP POST request.
 
-    # Access payload data
     data = request.POST.get("data")
     if not data:
+        logger.warning("Missing payload in Emby webhook request")
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
