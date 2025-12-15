@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from django.core.cache import cache
 from django.utils import timezone
@@ -20,6 +21,22 @@ class BaseWebhookProcessor:
     def process_payload(self, payload, user):
         """Process webhook payload."""
         raise NotImplementedError
+
+    def _get_played_at(self, payload):
+        """Extract played-at timestamp if provided by the payload."""
+        metadata = payload.get("Metadata", {}) or {}
+        ts = (
+            metadata.get("viewedAt")
+            or metadata.get("lastViewedAt")
+            or payload.get("viewedAt")
+        )
+        try:
+            ts_int = int(ts)
+        except (TypeError, ValueError):
+            return None
+
+        played_at = datetime.fromtimestamp(ts_int, tz=UTC)
+        return timezone.localtime(played_at)
 
     def _is_supported_event(self, event_type):
         """Check if event type is supported."""
@@ -43,11 +60,19 @@ class BaseWebhookProcessor:
 
     def _extract_season_episode_from_payload(self, payload):
         """Extract season and episode numbers from payload.
-        
+
         Override in subclasses if payload structure differs.
         Returns (season_number, episode_number) or (None, None) if not found.
         """
         return None, None
+
+    def _extract_series_title(self, payload):
+        """Extract TV series title from payload for title-based TMDB search.
+
+        Override in subclasses if payload structure differs.
+        Returns series title string or None if not found.
+        """
+        return
 
     def _process_media(self, payload, user, ids):
         """Route processing based on media type."""
@@ -66,7 +91,7 @@ class BaseWebhookProcessor:
 
     def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
         """Process TV episode webhook.
-        
+
         Args:
             payload: Webhook payload
             user: User instance
@@ -86,15 +111,17 @@ class BaseWebhookProcessor:
         # If we still don't have season/episode, try to get from payload
         if season_number is None or episode_number is None:
             season_number, episode_number = self._extract_season_episode_from_payload(
-                payload
+                payload,
             )
 
         if season_number is None or episode_number is None:
             logger.warning(
-                "Could not determine season/episode numbers for TMDB ID: %s", media_id
+                "Could not determine season/episode numbers for TMDB ID: %s",
+                media_id,
             )
             return
 
+        extract_title = self._extract_series_title(payload)
         # Pull TMDB metadata; if the TMDB ID is actually episode-level, fall back to
         # TVDB/IMDB to resolve the show ID instead of erroring and losing the scrobble.
         tv_metadata = None
@@ -109,11 +136,12 @@ class BaseWebhookProcessor:
             )
 
             # If TMDB lookup failed, try resolving the show via TVDB/IMDB and retry.
+            fallback_media_id = None
             if ids.get("tmdb_id") and (ids.get("tvdb_id") or ids.get("imdb_id")):
                 alt_ids = dict(ids)
                 alt_ids["tmdb_id"] = None
                 fallback_media_id, alt_season, alt_episode = self._find_tv_media_id(
-                    alt_ids
+                    alt_ids,
                 )
 
                 if fallback_media_id:
@@ -135,11 +163,56 @@ class BaseWebhookProcessor:
                             media_id,
                             fallback_exc,
                         )
-                        return
-                else:
-                    return
-            else:
+                        fallback_media_id = None  # Mark as failed so title search runs
+
+            # Last resort: search by title if all ID-based lookups failed
+            if not fallback_media_id and not tv_metadata:
+                series_title = self._extract_series_title(payload)
+                if series_title:
+                    logger.info(
+                        "Attempting title-based TMDB search for: %s",
+                        series_title,
+                    )
+                    try:
+                        search_results = app.providers.tmdb.search(
+                            MediaTypes.TV.value,
+                            series_title,
+                        )
+                        if search_results and search_results.get("results"):
+                            top_result = search_results["results"][0]
+                            media_id = top_result.get("media_id")
+                            if media_id:
+                                tv_metadata = app.providers.tmdb.tv_with_seasons(
+                                    media_id,
+                                    [season_number],
+                                )
+                                logger.info(
+                                    "Recovered TMDB lookup using title search: %s -> TMDB %s",
+                                    series_title,
+                                    media_id,
+                                )
+                    except Exception as search_exc:
+                        logger.warning(
+                            "Title-based search failed for %s: %s",
+                            series_title,
+                            search_exc,
+                        )
+
+            if not tv_metadata:
+                logger.warning(
+                    "All TMDB lookup attempts failed for show (original ID: %s)",
+                    ids.get("tmdb_id"),
+                )
                 return
+
+        # make sure the payload title matches what has been found in tmdb incase of id mismatches
+        if tv_metadata.get("title") != extract_title:
+            logger.debug(
+                "TMDB title '%s' does not match payload title '%s'",
+                tv_metadata.get("title"),
+                extract_title,
+            )
+            return
 
         tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
@@ -247,7 +320,7 @@ class BaseWebhookProcessor:
                         result.get("episode_number"),
                     )
                 # Fall back to show-level results if episode-level not available
-                elif response.get("tv_results"):
+                if response.get("tv_results"):
                     result = response["tv_results"][0]
                     # Return show ID only, season/episode should come from payload
                     return result.get("id"), None, None
@@ -299,8 +372,16 @@ class BaseWebhookProcessor:
     def _get_mal_id_from_tmdb_movie(self, mapping_data, tmdb_movie_id):
         """Find MAL ID from TMDB movie mapping."""
         for entry in mapping_data.values():
-            if entry.get("tmdb_movie_id") == tmdb_movie_id and "mal_id" in entry:
-                return self._parse_mal_id(entry["mal_id"])
+            candidate = entry.get("tmdb_movie_id")
+            try:
+                if (
+                    candidate is not None
+                    and int(candidate) == int(tmdb_movie_id)
+                    and "mal_id" in entry
+                ):
+                    return self._parse_mal_id(entry["mal_id"])
+            except (TypeError, ValueError):
+                continue
         return None
 
     def _get_mal_id_from_imdb(self, mapping_data, imdb_id):
@@ -337,7 +418,10 @@ class BaseWebhookProcessor:
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
-        now = timezone.now().replace(second=0, microsecond=0)
+        now = self._get_played_at(payload) or timezone.now().replace(
+            second=0,
+            microsecond=0,
+        )
 
         if current_instance and current_instance.status != Status.COMPLETED.value:
             current_instance.progress = progress
@@ -453,7 +537,10 @@ class BaseWebhookProcessor:
         episode_item = season_instance.get_episode_item(episode_number, season_metadata)
 
         if self._is_played(payload):
-            now = timezone.now().replace(second=0, microsecond=0)
+            now = self._get_played_at(payload) or timezone.now().replace(
+                second=0,
+                microsecond=0,
+            )
             latest_episode = (
                 app.models.Episode.objects.filter(
                     item=episode_item,

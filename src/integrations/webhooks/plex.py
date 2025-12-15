@@ -1,6 +1,8 @@
 import json
 import logging
+import re
 
+# /from app.services import music_scrobble
 import app
 from app.models import MediaTypes
 
@@ -11,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 class PlexWebhookProcessor(BaseWebhookProcessor):
     """Processor for Plex webhook events."""
+
+    # MEDIA_TYPE_MAPPING = {
+    #     **BaseWebhookProcessor.MEDIA_TYPE_MAPPING,
+    #     "Track": MediaTypes.MUSIC.value,
+    # }
 
     def process_payload(self, payload, user):
         """Process the incoming Plex webhook payload."""
@@ -28,6 +35,37 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 payload_user,
             )
             return
+
+        media_type = self._get_media_type(payload)
+        # if media_type == MediaTypes.MUSIC.value:
+        #     if not getattr(user, "music_enabled", False):
+        #         logger.debug(
+        #             "Ignoring Plex music webhook for user %s: music disabled",
+        #             payload_user,
+        #         )
+        #         return None
+
+        #     music_event = self._build_music_event(payload, user)
+        #     music_entry = music_scrobble.record_music_playback(music_event)
+        #     if music_entry is None:
+        #         logger.info(
+        #             "Processed Plex music %s for %s: %s - %s (no tracking yet; waiting for scrobble)",
+        #             "scrobble" if music_event.completed else "play",
+        #             payload_user,
+        #             music_event.track_title,
+        #             music_event.artist_name or "Unknown Artist",
+        #         )
+        #         return None
+        #     logger.info(
+        #         "Processed Plex music %s for %s: %s - %s (status=%s, progress=%s)",
+        #         "scrobble" if music_event.completed else "play",
+        #         payload_user,
+        #         music_event.track_title,
+        #         music_event.artist_name or "Unknown Artist",
+        #         music_entry.status,
+        #         music_entry.progress,
+        #     )
+        #     return music_entry
 
         ids = self._extract_external_ids(payload)
         logger.info("Extracted IDs from payload: %s", ids)
@@ -106,8 +144,15 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if media_type == MediaTypes.TV.value:
             # Extract season/episode from Plex payload
             season_number, episode_number = self._extract_season_episode_from_payload(
-                payload
+                payload,
             )
+            if "tmdb_id" in ids and ids["tmdb_id"] is not None:
+                logger.debug(
+                    "Resetting tmdb_id '%s' for episode as for plex it is the episode tmdb id where yamtrack expects the series tmdb id",
+                    ids["tmdb_id"],
+                )
+                ids["tmdb_id"] = None
+
             self._process_tv(payload, user, ids, season_number, episode_number)
         elif media_type == MediaTypes.MOVIE.value:
             self._process_movie(payload, user, ids)
@@ -142,16 +187,33 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         """Get media title from payload."""
         title = None
 
-        if self._get_media_type(payload) == MediaTypes.TV.value:
+        media_type = self._get_media_type(payload)
+
+        if media_type == MediaTypes.TV.value:
             series_name = payload["Metadata"].get("grandparentTitle")
             season_number = payload["Metadata"].get("parentIndex")
             episode_number = payload["Metadata"].get("index")
             title = f"{series_name} S{season_number:02d}E{episode_number:02d}"
 
-        elif self._get_media_type(payload) == MediaTypes.MOVIE.value:
+        elif media_type == MediaTypes.MOVIE.value:
             title = payload["Metadata"].get("title")
 
+        elif media_type == MediaTypes.MUSIC.value:
+            metadata = payload.get("Metadata", {})
+            artist = metadata.get("grandparentTitle")
+            track = metadata.get("title")
+            if artist and track:
+                title = f"{artist} - {track}"
+            else:
+                title = track or artist
+
         return title
+
+    def _extract_series_title(self, payload):
+        """Extract TV series title from Plex payload."""
+        if self._get_media_type(payload) == MediaTypes.TV.value:
+            return payload.get("Metadata", {}).get("grandparentTitle")
+        return None
 
     def _extract_external_ids(self, payload):
         guids = payload["Metadata"].get("Guid", [])
@@ -177,17 +239,85 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             "plex_guid": get_id("plex"),
         }
 
+    def _extract_music_ids(self, metadata):
+        """Extract MusicBrainz IDs from a Plex track payload."""
+        guids = metadata.get("Guid", [])
+        if not guids:
+            single_guid = metadata.get("guid")
+            if single_guid:
+                guids = [{"id": single_guid}]
+
+        ids = {}
+        for guid in guids:
+            guid_value = guid.get("id") or ""
+            guid_lower = guid_value.lower()
+            uuid = self._extract_uuid(guid_value)
+
+            if "musicbrainz" in guid_lower or "mbid" in guid_lower:
+                if "recording" in guid_lower or "track" in guid_lower:
+                    ids.setdefault("musicbrainz_recording", uuid or guid_value)
+                elif "release-group" in guid_lower or "release_group" in guid_lower:
+                    ids.setdefault("musicbrainz_release_group", uuid or guid_value)
+                elif "release" in guid_lower or "album" in guid_lower:
+                    ids.setdefault("musicbrainz_release", uuid or guid_value)
+                elif "artist" in guid_lower:
+                    ids.setdefault("musicbrainz_artist", uuid or guid_value)
+                else:
+                    ids.setdefault("musicbrainz_recording", uuid or guid_value)
+
+        return ids
+
+    def _extract_uuid(self, value):
+        """Extract UUID from a string."""
+        match = re.search(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            value,
+        )
+        return match.group(0) if match else None
+
+    # def _build_music_event(self, payload, user):
+    #     """Build a normalized music playback event from Plex payload."""
+    #     metadata = payload.get("Metadata", {}) or {}
+    #     played_at = self._get_played_at(payload) or timezone.now().replace(
+    #         second=0,
+    #         microsecond=0,
+    #     )
+    #     duration_ms = metadata.get("duration")
+    #     try:
+    #         duration_ms = int(duration_ms) if duration_ms is not None else None
+    #     except (TypeError, ValueError):
+    #         duration_ms = None
+    #     track_number = metadata.get("index")
+    #     try:
+    #         track_number = int(track_number) if track_number is not None else None
+    #     except (TypeError, ValueError):
+    #         track_number = None
+
+    #     return music_scrobble.MusicPlaybackEvent(
+    #         user=user,
+    #         artist_name=metadata.get("grandparentTitle"),
+    #         album_title=metadata.get("parentTitle"),
+    #         track_title=metadata.get("title") or "Unknown Track",
+    #         track_number=track_number,
+    #         duration_ms=duration_ms,
+    #         plex_rating_key=metadata.get("ratingKey"),
+    #         external_ids=self._extract_music_ids(metadata),
+    #         completed=payload.get("event") == "media.scrobble",
+    #         played_at=played_at,
+    #         defer_cover_prefetch=bool(payload.get("_import_batch")),
+    #     )
+
     def _extract_season_episode_from_payload(self, payload):
         """Extract season and episode numbers from Plex payload."""
         metadata = payload.get("Metadata", {})
         season_number = metadata.get("parentIndex")
         episode_number = metadata.get("index")
-        
+
         # Convert to int if they exist
         try:
             season_number = int(season_number) if season_number is not None else None
             episode_number = int(episode_number) if episode_number is not None else None
         except (ValueError, TypeError):
             return None, None
-        
+
         return season_number, episode_number
